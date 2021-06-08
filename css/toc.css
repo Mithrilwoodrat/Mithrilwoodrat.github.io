@@ -1,0 +1,26 @@
+@charset "utf-8";
+
+.nav {
+	float: right;
+	padding-left: 50px;
+}
+
+.toc {
+	position: fixed;
+	padding-left: 50px;
+	width: 20%;
+}
+
+.clickable-header {
+  cursor:pointer;
+}
+.clickable-header:hover {
+  text-decoration:underline;
+}
+.top-level-header {
+  display:inline;
+}
+.back-to-top {
+  margin-left:5px;
+  cursor:pointer;
+}
