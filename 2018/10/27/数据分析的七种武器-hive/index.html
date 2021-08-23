@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>
+    数据分析的七种武器-hive
+    </title>
+  <link type="application/atom+xml" rel="alternate" href="/feed.xml" title="虚实" />
+  
+  <style>
+  table{
+    border-left:1px solid #000000;border-top:1px solid #000000;
+    width: 100%;
+    word-wrap:break-word; word-break:break-all;
+  }
+  table th{
+  text-align:center;
+  }
+  table th,td{
+    border-right:1px solid #000000;border-bottom:1px solid #000000;
+  }
+  </style>
+
+  <meta name="description" content="实验环境搭建">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/toc.css">
+  <link rel="canonical" href="/2018/10/27/%E6%95%B0%E6%8D%AE%E5%88%86%E6%9E%90%E7%9A%84%E4%B8%83%E7%A7%8D%E6%AD%A6%E5%99%A8-hive/">
+  <link rel="alternate" type="application/rss+xml" title="虚实" href="/feed.xml" />
+  <link rel="stylesheet" href="/css/highlight.min.css">
+  <link href="//cdn.staticfile.org/font-awesome/3.2.1/css/font-awesome.min.css" rel="stylesheet"media="all">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+    <div>
+      <a class="site-title" href="/">虚实</a>
+      <div class="site-pages">
+		<a class="site-page" href="/archive/">归档</a>
+		<a class="site-page" href="/categories/">分类</a>
+		<a class="site-page" href="/about/">关于</a>
+		<a class="site-page" href="/friend-links/">友情链接</a>
+        <a class="site-page" href="/recommends/">推荐</a>
+      </div>
+      <p class="site-sub-title">记录下折腾和学习的过程</p>
+    </div>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <div class="post">
+
+  <header class="post-header">
+    <h1 class="post-title">数据分析的七种武器-hive</h1>
+    <p class="post-meta">Oct 27, 2018 • admin</p>
+
+	<p class="post-meta"> categories :   <a href="/categories/#数据分析"> 数据分析 </a>  </p>
+    <div id="show_qrcode">
+        <a>扫描二维码</a>
+        <div id="qrcode" style="display:none;position:absolute;z-index:1"></div>
+    </div>
+  </header>
+  <div class="nav">
+      <div id="toc" class="toc"></div>
+  </div>
+  <article class="post-content">
+    <h2 id="实验环境搭建">实验环境搭建</h2>
+
+<p>实验环境 阿里云服务器 Ubuntu 16.04</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code># lsb_release -a
+LSB Version:    core-9.20160110ubuntu0.2-amd64:core-9.20160110ubuntu0.2-noarch:security-9.20160110ubuntu0.2-amd64:security-9.20160110ubuntu0.2-noarch
+Distributor ID: Ubuntu
+Description:    Ubuntu 16.04.4 LTS
+Release:        16.04
+Codename:       xenial
+</code></pre></div></div>
+
+<p>通过 Docker 安装 Hive，先安装 Docker-ce，并使用阿里云提供的镜像加速服务。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sudo apt install -y apt-transport-https ca-certificates curl software-properties-common
+sudo apt-get update
+sudo apt install -y apt-transport-https ca-certificates curl software-properties-common
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu bionic stable"
+apt-get update
+https://download.docker.com/linux/ubuntu/gpg
+apt-cache policy docker-ce
+sudo apt install -y docker-ce
+sudo mkdir -p /etc/docker
+# 登陆阿里云控制台复制加速链接。
+sudo tee /etc/docker/daemon.json &lt;&lt;-'EOF'
+{
+  "registry-mirrors": ["https://xxx.mirror.aliyuncs.com"] 
+}
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl restart docker
+# docker pull parrotstream/hive
+docker pull bde2020/hive
+</code></pre></div></div>
+
+<p>拉取 Hive 的 Docker Compose 配置并启动 Hive</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code># git clone https://github.com/parrot-stream/docker-hive.git
+git clone https://github.com/big-data-europe/docker-hive
+pip install docker-compose
+sudo python -m easy_install --upgrade pyOpenSSL
+cd docker-hive
+docker network create parrot_default
+docker-compose up -d # hive 需要 postgres 存储 metadata
+</code></pre></div></div>
+
+<!-- 容器起来后，使用 `docker exec -it hive /bin/bash` 进入 hive 容器，
+
+先使用 `hadoop envvars` 查看环境变量
+
+```
+# hadoop envvars
+JAVA_HOME='/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.181-3.b13.el7_5.x86_64'
+HADOOP_COMMON_HOME='/usr/lib/hadoop'
+HADOOP_COMMON_DIR='./'
+HADOOP_COMMON_LIB_JARS_DIR='lib'
+HADOOP_COMMON_LIB_NATIVE_DIR='lib/native'
+HADOOP_CONF_DIR='/opt/hadoop/etc/hadoop'
+HADOOP_TOOLS_HOME='/opt/hadoop'
+HADOOP_TOOLS_DIR='share/hadoop/tools'
+HADOOP_TOOLS_LIB_JARS_DIR='share/hadoop/tools/lib'
+```
+
+将 HADOOP_HOME 添加到环境中即可启动 hive 命令行。
+
+```
+export JAVA_HOME='/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.181-3.b13.el7_5.x86_64'
+export PATH="$PATH:$JAVA_HOME/bin"
+export HADOOP_HOME='/usr/lib/hadoop'
+export PATH=$PATH:$HADOOP_HOME/bin
+export PATH=$PATH:$HADOOP_HOME/sbin
+export HIVE_HOME=/opt/hive
+export PATH=$PATH:$HIVE_HOME/bin
+``` -->
+
+<p>使用 docker-compose 命令登录 hive-server,并执行一条命令做测试 (Windows 下需要使用 powershell 调用)</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code># docker-compose exec hive-server bash
+# /opt/hive/bin/beeline -u jdbc:hive2://localhost:10000
+0: jdbc:hive2://localhost:10000&gt; show databases;
++----------------+
+| database_name  |
++----------------+
+| default        |
++----------------+
+</code></pre></div></div>
+
+<h2 id="资料准备">资料准备</h2>
+
+<p>使用 axel 从网上下载测试用的 <a href="https://www.reddit.com/r/datasets/comments/6v685o/complete_hacker_news_ycombinator_data_dump/
+https://files.pushshift.io/hackernews/">Hacker News 评论数据</a>并解压。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>axel -n 10 https://files.pushshift.io/hackernews/HNI_2018-05.bz2
+bzip2 -dk HNI_2018-05.bz2
+</code></pre></div></div>
+
+<p>使用 head 查看该文件的格式如下</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>head -n 1 HNI_2018-05
+{"by":"burntwater","id":16963601,"parent":16962078,"retrieved_on":1528401048,"text":"The New York State fee by itself is $200. Unless I&amp;#x27;m missing something, you paid significantly more than that for the publication requirement (it was around $1,000, give or take a couple hundred, last I checked).","time":1525132803,"type":"comment"}
+</code></pre></div></div>
+
+<p>因为该文件为 json 格式，需要用 jq 工具转换为 csv 格式再导入 hive。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>jq -r  '[ .by, (.id|tostring), (.parent|tostring), (.retrieved_on|tostring), .text, .type, (.time|tostring) , (.time| strftime("%Y-%m-%d"))] | join("||") ' HNI_2018-05 &gt; HNI_2018-05.csv
+</code></pre></div></div>
+
+<p>该命令会将 json 转为如下的格式，因为 Hive 导入数据都是以文本的格式导入，需要设置其分隔符号，最好不要与数据中的常见字段冲突。</p>
+
+<p>同时，Hive 表一般会做分区处理，需要有一个 date 字符串，这里用原有的 unix 时间戳格式化了一个 ds 字段。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Caprinicus||16963610||16962203||1528401049||And that they grew to this point before imposing this &amp;quot;curation&amp;quot;. It seems to be a recurring theme with these companies to grow to a monopoly with a place for relatively free discourse and then to do this as soon as they feel safe.||comment||1525132915||2018-05-01
+</code></pre></div></div>
+
+<p>该操作会生成 <code class="language-plaintext highlighter-rouge">HNI_2018-05.csv</code> 文件。</p>
+
+<p>生成该文件后，可以创建一个共享目录，挂载到 hive-server Docker 中。</p>
+
+<p>修改 docker-hive 下的 <code class="language-plaintext highlighter-rouge">docker-compose.yml</code> 文件，给 hive-server 添加一个 volume， 映射到当前目录下的 data 目录。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>  hive-server:
+    image: bde2020/hive:2.3.2-postgresql-metastore
+    env_file:
+      - ./hadoop-hive.env
+    environment:
+      HIVE_CORE_CONF_javax_jdo_option_ConnectionURL: "jdbc:postgresql://hive-metastore/metastore"
+      SERVICE_PRECONDITION: "hive-metastore:9083"
+    ports:
+      - "10000:10000"
+    volumes:
+      - ./data:/data
+</code></pre></div></div>
+
+<p>拷贝 csv 数据到共享目录，并重启 hive。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>docker-hive# cp ../HNI_2018-05.csv data/
+docker-compose stop
+docker-compose up -d
+</code></pre></div></div>
+
+<p>创建对应的 HIVE TABLE</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>hive&gt; CREATE TABLE HN_COMMENTS (comment_by STRING, comment_id INT, parent INT, 
+retrieved_on INT, text STRING, type STRING,
+time INT,dt STRING)
+row format delimited fields terminated by '||';
+</code></pre></div></div>
+
+<p>将 csv 中的数据导入 HIVE 中。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>LOAD DATA LOCAL INPATH '/data/HNI_2018-05.csv' OVERWRITE INTO TABLE HN_COMMENTS;
+</code></pre></div></div>
+
+<p>查看导入是否成功。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&gt; select text from HN_COMMENTS limit 1;
+</code></pre></div></div>
+
+<p>创建分区表</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>CREATE TABLE HN_COMMENTS_DT (comment_by STRING, comment_id INT, parent INT, 
+retrieved_on INT, text STRING, type STRING,
+time INT) partitioned by (dt STRING);
+</code></pre></div></div>
+
+<p>开启动态分区功能</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>set hive.exec.dynamic.partition.mode=nonstrict;
+</code></pre></div></div>
+
+<p>原始表按分区导入分区表</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>insert into table HN_COMMENTS_DT partition(dt) 
+select * from HN_COMMENTS;
+</code></pre></div></div>
+
+<h2 id="常用语句">常用语句</h2>
+
+<h3 id="查看支持的函数">查看支持的函数</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>show functions;
+</code></pre></div></div>
+
+<p>例如转换 unix 时间戳为日期字符串</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>SELECT from_unixtime(1525350800)
++----------------------+
+|         _c0          |
++----------------------+
+| 2018-05-03 12:33:20  |
++----------------------+
+</code></pre></div></div>
+
+<h3 id="查看表定义">查看表定义</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>desc hn_comments;
+</code></pre></div></div>
+
+<h3 id="查看分区">查看分区</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>show partitions HN_COMMENTS_DT;
+
++----------------------------------------------------+
+|                     partition                      |
++----------------------------------------------------+
+| dt=2018-05-01                                      |
+| dt=2018-05-06                                      |
+| dt=2018-05-08                                      |
+| dt=2018-05-09                                      |
+| dt=2018-05-11                                      |
+| dt=2018-05-12                                      |
+| dt=2018-05-15                                      |
+| dt=2018-05-16                                      |
+| dt=2018-05-23                                      |
+| dt=2018-05-24                                      |
+| dt=2018-05-29                                      |
++----------------------------------------------------+
+</code></pre></div></div>
+
+<p>Hive 表用于存储大量数据，通常会按时间分区(小时、天、周等等)，查询 Hive 表前最好使用该命令查看分区详情，按分区来查询数据避免无效计算。</p>
+
+<h2 id="开始分析">开始分析</h2>
+
+<p>查看评论数量最多的人</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&gt; SELECT comment_by, COUNT(*) as cnt
+FROM  HN_COMMENTS WHERE comment_by!=""
+GROUP BY comment_by
+order BY cnt desc limit 10;
+
++----------------+-------+
+|   comment_by   |  cnt  |
++----------------+-------+
+| &lt;/code&gt;&lt;/pre&gt;  | 1706  |
+| jacquesm       | 798   |
+| rbanffy        | 751   |
+| icebraining    | 549   |
+| dragonwriter   | 546   |
+| pjmlp          | 437   |
+| dang           | 425   |
+| gowld          | 423   |
+| s73v3r_        | 420   |
+| TeMPOraL       | 405   |
++----------------+-------+
+</code></pre></div></div>
+
+<h2 id="参考">参考</h2>
+<p><a href="https://github.com/fhoffa/notebooks/blob/master/analyzing%20hacker%20news.ipynb">https://github.com/fhoffa/notebooks/blob/master/analyzing%20hacker%20news.ipynb</a></p>
+
+  </article>
+
+</div>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function () {
+        var s = document.createElement('script'); s.async = true;
+        s.type = 'text/javascript';
+        s.src = '//' + disqus_shortname + '.disqus.com/count.js';
+        (document.getElementsByTagName('HEAD')[0] || document.getElementsByTagName('BODY')[0]).appendChild(s);
+    }());
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/raphael/2.1.0/raphael-min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+<script src="https://flowchart.js.org/flowchart-latest.js"></script>
+<script src="/js/highlight.min.js"></script>
+<script src="/js/toc.js"></script>
+<script src="/js/qrcode.min.js"></script>
+<script>
+if (!String.prototype.format) {
+    String.prototype.format = function() {
+        var args = arguments;
+        return this.replace(/{(\d+)}/g, function(match, number) { 
+            return typeof args[number] != 'undefined'
+                ? args[number]
+                : match
+            ;
+        });
+    };
+}
+
+$('pre code').each(function(i, block) {
+    hljs.highlightBlock(block);
+});
+
+$('.language-flow').each(function(i, block) {
+    console.log(block);
+    code = $(this).text();
+    diagram = flowchart.parse(code);
+    canvas_id = 'flow'+ i;
+    console.log(canvas_id);
+    temp = "<div id='{0}'> </div>".format(canvas_id);
+    console.log(temp);
+    $(this).html(temp);
+    diagram.drawSVG(canvas_id, {
+        'x': 0,
+        'y': 0,
+        'line-width': 3,
+        'line-length': 50,
+        'text-margin': 10,
+        'font-size': 14,
+    });	
+});
+
+$('#toc').toc({
+    noBackToTopLinks: true,
+    listType: 'ul',
+    title: 'TOC',
+});
+
+var url = location.href;
+console.log(url);
+var qrcode = new QRCode("qrcode", {
+    text: url,
+    width: 128,
+    height: 128,
+    colorDark : "#000000",
+    colorLight : "#ffffff",
+    correctLevel : QRCode.CorrectLevel.H
+});
+
+$(document).ready(function () {
+    $('#show_qrcode').on('mouseenter', function () {
+        $('#qrcode').show();
+        $(this).css({
+            "text-decoration": "underline"
+        });
+    }).on('mouseleave', function () {
+        $('#qrcode').hide();
+        $(this).css({
+            "text-decoration": ''
+        });
+    });;
+});
+</script>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col  footer-col-1">
+        <ul class="contact-list">
+	  <li>
+          <li><a href="mailto:mithrilwoodrat@gmail.com">mithrilwoodrat@gmail.com</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col  footer-col-2">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/Mithrilwoodrat">
+              <span class="icon  icon--github">
+                <svg viewBox="0 0 16 16">
+                  <path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/>
+                </svg>
+              </span>
+              <span class="username">Mithrilwoodrat</span> 
+            </a>
+          </li>
+          
+        </ul>
+      </div>
+  </div>
+</footer>
+
+<script>
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-66599686-1', 'auto');
+  ga('send', 'pageview');
+
+</script>
+</body>
+</html>

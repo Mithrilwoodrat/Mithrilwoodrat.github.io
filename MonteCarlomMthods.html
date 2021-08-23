@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head lang="en">
+    <meta charset="UTF-8">
+    <title>使用蒙特卡罗方法计算圆周率</title>
+    <script src="https://code.createjs.com/createjs-2015.11.26.min.js"></script>
+</head>
+<body>
+    <canvas height="800px" width="800px" id="stage">Your browser does not support the HTML5 canvas tag.</canvas>
+<div>
+    Rect's Diameter: <input id="diameter"></input></br>
+    Point Number:  <input id="point_number"></input></br>
+    <button onclick="draw();">draw</button></br>
+    P(point_in_circle): <input id="p_in_circle" readonly></input></br>
+    PI : <input id="pi" readonly></input></br>
+</div>
+<script>
+var stage = new createjs.Stage("stage");
+
+createjs.Ticker.setFPS(30);
+createjs.Ticker.addEventListener("tick", stage);
+
+var container = new createjs.Container();
+container.x = 30;
+container.y = 30;
+stage.addChild(container);
+
+var g = new createjs.Graphics();
+
+function drawCircle(R) {
+    var circle = new createjs.Shape();
+    circle.graphics.setStrokeStyle(1);
+    circle.graphics.beginStroke("blue");
+    circle.graphics.beginFill();
+    circle.graphics.drawCircle(R, R, R);
+    circle.graphics.endFill();
+    circle.graphics.endStroke();
+    
+    container.addChild(circle);
+}
+
+function drawRect(D) {
+    var rect = new createjs.Shape();
+    rect.graphics.setStrokeStyle(1);
+    rect.graphics.beginStroke("blue");
+    rect.graphics.beginFill();
+    rect.graphics.drawRect(0, 0, D, D);
+    rect.graphics.endFill();
+    rect.graphics.endStroke();
+
+    container.addChild(rect);
+}
+
+function gen_point() {
+    x = Math.random();
+    y = Math.random();
+    var point = new createjs.Shape();
+    point.graphics.beginStroke("#ff6600");
+    point.graphics.beginFill("red");
+    point.graphics.drawCircle(y*D, x*D, 0.5);
+    point.graphics.endFill();
+
+    container.addChild(point);
+    return [x*D, y*D];
+}
+
+
+D = 500;
+R = D / 2.0;
+document.getElementById('diameter').value = 500;
+point_num = 500;
+document.getElementById('point_number').value = 500;
+drawRect(D);
+drawCircle(R);
+var in_circle = 0.0;
+
+for (var i=0; i < point_num; i++) {
+    pox = gen_point();
+    if (Math.sqrt(Math.pow(Math.abs(pox[0] - R), 2) + Math.pow(Math.abs(pox[1] - R), 2)) < R) {
+	    in_circle++;
+    }
+}
+p_in_circle = in_circle / point_num;
+document.getElementById('p_in_circle').value = p_in_circle;
+Pi = (p_in_circle * D * D) / (R * R);
+document.getElementById('pi').value = Pi;
+
+
+function draw() {
+    container.removeAllChildren();
+    D = document.getElementById('diameter').value;
+    R = D / 2.0;
+
+    drawRect(D);
+    drawCircle(R);
+    
+    point_num = document.getElementById('point_number').value;
+    
+    var in_circle = 0.0;
+
+    for (var i=0; i < point_num; i++) {
+	    pox = gen_point();
+	    if (Math.sqrt(Math.pow(Math.abs(pox[0] - R), 2) + Math.pow(Math.abs(pox[1] - R), 2)) < R) {
+	        in_circle++;
+	    }
+    }
+    p_in_circle = in_circle / point_num;
+    document.getElementById('p_in_circle').value = p_in_circle;
+    Pi = (p_in_circle * D * D) / (R * R);
+    document.getElementById('pi').value = Pi;
+}
+</script>
+</body>
+</html>

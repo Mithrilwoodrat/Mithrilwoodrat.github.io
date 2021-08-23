@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>
+    看到一个有意思的问题
+    </title>
+  <link type="application/atom+xml" rel="alternate" href="/feed.xml" title="虚实" />
+  
+  <style>
+  table{
+    border-left:1px solid #000000;border-top:1px solid #000000;
+    width: 100%;
+    word-wrap:break-word; word-break:break-all;
+  }
+  table th{
+  text-align:center;
+  }
+  table th,td{
+    border-right:1px solid #000000;border-bottom:1px solid #000000;
+  }
+  </style>
+
+  <meta name="description" content="起因是在知乎看到了 如何评价 Ken Thompson 在 C 编译器里植入了后门这件事？">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/toc.css">
+  <link rel="canonical" href="/2015/02/12/%e7%9c%8b%e5%88%b0%e4%b8%80%e4%b8%aa%e6%9c%89%e6%84%8f%e6%80%9d%e7%9a%84%e9%97%ae%e9%a2%98/">
+  <link rel="alternate" type="application/rss+xml" title="虚实" href="/feed.xml" />
+  <link rel="stylesheet" href="/css/highlight.min.css">
+  <link href="//cdn.staticfile.org/font-awesome/3.2.1/css/font-awesome.min.css" rel="stylesheet"media="all">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+    <div>
+      <a class="site-title" href="/">虚实</a>
+      <div class="site-pages">
+		<a class="site-page" href="/archive/">归档</a>
+		<a class="site-page" href="/categories/">分类</a>
+		<a class="site-page" href="/about/">关于</a>
+		<a class="site-page" href="/friend-links/">友情链接</a>
+        <a class="site-page" href="/recommends/">推荐</a>
+      </div>
+      <p class="site-sub-title">记录下折腾和学习的过程</p>
+    </div>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <div class="post">
+
+  <header class="post-header">
+    <h1 class="post-title">看到一个有意思的问题</h1>
+    <p class="post-meta">Feb 12, 2015 • admin</p>
+
+	<p class="post-meta"> categories :   <a href="/categories/#杂谈"> 杂谈 </a>  </p>
+    <div id="show_qrcode">
+        <a>扫描二维码</a>
+        <div id="qrcode" style="display:none;position:absolute;z-index:1"></div>
+    </div>
+  </header>
+  <div class="nav">
+      <div id="toc" class="toc"></div>
+  </div>
+  <article class="post-content">
+    <p>起因是在知乎看到了 <a href="http://www.zhihu.com/question/26866999#answer-9121637" target="_blank">如何评价 Ken Thompson 在 C 编译器里植入了后门这件事？</a></p>
+
+<p>然后在到了<span style="color:#222222;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:13px;line-height:22.1000003814697px;">USTC 李博杰同学写的很有意思的文章 <a href="https://ring0.me/2014/11/insert-backdoor-into-compiler/" target="_blank">给开源编译器插入后门</a></span></p>
+
+<p>然后看了下Ken Thompson老爷子的原文<a href="http://cm.bell-labs.com/who/ken/trust.html" target="_blank"> <span style="line-height:1.5;">Reflections on Trusting Trust</span></a></p>
+
+<p><span style="color:#222222;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:13px;line-height:22.1000003814697px;"><span style="color:#222222;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:13px;line-height:22.1000003814697px;">    文中,老爷子回忆了和</span></span>Dennis Ritchie的基情岁月,他说他们写了一段一模一样的20行的汇编程序,每个字符都一样….然后老爷子从他的大学生活开始说,那个时候并没有Video Game,所以他们的娱乐方式为提问题,然后写程序解决.他最喜欢中的一种为写最短的可自我复制的程序,那个时候使用的语言为FORTRAN,使用FORTRAN的原因和three-legged races 流行的原因一致(这里并不能理解….)</p>
+
+<p>更准确的说法是写出一个代码,编译执行会产生同样的代码</p>
+
+<p>Py版如下</p>
+
+<pre class="prettyprint lang-py">s = ["print \"s =\", s","for i in s: print i"]
+print "s =", s
+for i in s: print i     </pre>
+<p>然后由于C的编译器是由C编写的.可以修改C编译器的代码,是其在编译指定程序时生成利用代码,在编译自身时复制自身…有点绕.具体的请参照开头给出的链接,这里不再赘述.</p>
+
+<p>文章末尾,老爷子提醒了我们,任何不是自己编写的程序都不能够完全信任,尤其是雇佣了像他一样的人的大公司(老爷子的自我调侃),源码级别的检查并不能保证你的安全,威胁可能来自assembler,loader,甚至hardware microcode.越底层的bug越难以发现.</p>
+
+<p>最后老爷子提醒我们,随意破坏和闯入他人的计算机系统是不道德的. </p>
+
+<p>让我们一起把Kali删掉吧 : )</p>
+
+  </article>
+
+</div>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function () {
+        var s = document.createElement('script'); s.async = true;
+        s.type = 'text/javascript';
+        s.src = '//' + disqus_shortname + '.disqus.com/count.js';
+        (document.getElementsByTagName('HEAD')[0] || document.getElementsByTagName('BODY')[0]).appendChild(s);
+    }());
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/raphael/2.1.0/raphael-min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+<script src="https://flowchart.js.org/flowchart-latest.js"></script>
+<script src="/js/highlight.min.js"></script>
+<script src="/js/toc.js"></script>
+<script src="/js/qrcode.min.js"></script>
+<script>
+if (!String.prototype.format) {
+    String.prototype.format = function() {
+        var args = arguments;
+        return this.replace(/{(\d+)}/g, function(match, number) { 
+            return typeof args[number] != 'undefined'
+                ? args[number]
+                : match
+            ;
+        });
+    };
+}
+
+$('pre code').each(function(i, block) {
+    hljs.highlightBlock(block);
+});
+
+$('.language-flow').each(function(i, block) {
+    console.log(block);
+    code = $(this).text();
+    diagram = flowchart.parse(code);
+    canvas_id = 'flow'+ i;
+    console.log(canvas_id);
+    temp = "<div id='{0}'> </div>".format(canvas_id);
+    console.log(temp);
+    $(this).html(temp);
+    diagram.drawSVG(canvas_id, {
+        'x': 0,
+        'y': 0,
+        'line-width': 3,
+        'line-length': 50,
+        'text-margin': 10,
+        'font-size': 14,
+    });	
+});
+
+$('#toc').toc({
+    noBackToTopLinks: true,
+    listType: 'ul',
+    title: 'TOC',
+});
+
+var url = location.href;
+console.log(url);
+var qrcode = new QRCode("qrcode", {
+    text: url,
+    width: 128,
+    height: 128,
+    colorDark : "#000000",
+    colorLight : "#ffffff",
+    correctLevel : QRCode.CorrectLevel.H
+});
+
+$(document).ready(function () {
+    $('#show_qrcode').on('mouseenter', function () {
+        $('#qrcode').show();
+        $(this).css({
+            "text-decoration": "underline"
+        });
+    }).on('mouseleave', function () {
+        $('#qrcode').hide();
+        $(this).css({
+            "text-decoration": ''
+        });
+    });;
+});
+</script>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col  footer-col-1">
+        <ul class="contact-list">
+	  <li>
+          <li><a href="mailto:mithrilwoodrat@gmail.com">mithrilwoodrat@gmail.com</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col  footer-col-2">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/Mithrilwoodrat">
+              <span class="icon  icon--github">
+                <svg viewBox="0 0 16 16">
+                  <path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/>
+                </svg>
+              </span>
+              <span class="username">Mithrilwoodrat</span> 
+            </a>
+          </li>
+          
+        </ul>
+      </div>
+  </div>
+</footer>
+
+<script>
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-66599686-1', 'auto');
+  ga('send', 'pageview');
+
+</script>
+</body>
+</html>

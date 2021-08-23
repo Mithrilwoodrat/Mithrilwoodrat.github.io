@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>
+    编译器开发从零单排(2)
+    </title>
+  <link type="application/atom+xml" rel="alternate" href="/feed.xml" title="虚实" />
+  
+  <style>
+  table{
+    border-left:1px solid #000000;border-top:1px solid #000000;
+    width: 100%;
+    word-wrap:break-word; word-break:break-all;
+  }
+  table th{
+  text-align:center;
+  }
+  table th,td{
+    border-right:1px solid #000000;border-bottom:1px solid #000000;
+  }
+  </style>
+
+  <meta name="description" content="NaiveCompiler 前端设计">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/toc.css">
+  <link rel="canonical" href="/2019/02/16/%E7%BC%96%E8%AF%91%E5%99%A8%E5%BC%80%E5%8F%91%E4%BB%8E%E9%9B%B6%E5%8D%95%E6%8E%92%282%29/">
+  <link rel="alternate" type="application/rss+xml" title="虚实" href="/feed.xml" />
+  <link rel="stylesheet" href="/css/highlight.min.css">
+  <link href="//cdn.staticfile.org/font-awesome/3.2.1/css/font-awesome.min.css" rel="stylesheet"media="all">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+    <div>
+      <a class="site-title" href="/">虚实</a>
+      <div class="site-pages">
+		<a class="site-page" href="/archive/">归档</a>
+		<a class="site-page" href="/categories/">分类</a>
+		<a class="site-page" href="/about/">关于</a>
+		<a class="site-page" href="/friend-links/">友情链接</a>
+        <a class="site-page" href="/recommends/">推荐</a>
+      </div>
+      <p class="site-sub-title">记录下折腾和学习的过程</p>
+    </div>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <div class="post">
+
+  <header class="post-header">
+    <h1 class="post-title">编译器开发从零单排(2)</h1>
+    <p class="post-meta">Feb 16, 2019 • admin</p>
+
+	<p class="post-meta"> categories :   <a href="/categories/#compiler"> compiler </a>  </p>
+    <div id="show_qrcode">
+        <a>扫描二维码</a>
+        <div id="qrcode" style="display:none;position:absolute;z-index:1"></div>
+    </div>
+  </header>
+  <div class="nav">
+      <div id="toc" class="toc"></div>
+  </div>
+  <article class="post-content">
+    <h1 id="naivecompiler-前端设计">NaiveCompiler 前端设计</h1>
+
+<p>NaiveCompiler 的前端实现主要在 <code class="language-plaintext highlighter-rouge">c_parser.py</code> 文件中， 其中词法分析由 <code class="language-plaintext highlighter-rouge">Lexer</code> 类实现， 语法分析由 <code class="language-plaintext highlighter-rouge">Parser</code> 类实现，生成的结果为 ast（语法树），定义于 <code class="language-plaintext highlighter-rouge">c_ast.py</code>。</p>
+
+<p>其中 <code class="language-plaintext highlighter-rouge">Lexer</code> 和 <code class="language-plaintext highlighter-rouge">Parser</code> 类使用了 <a href="http://www.dabeaz.com/ply/">PLY</a> 库，即 lex、yacc 的 python 实现。</p>
+
+<p>本系列不涉及编译原理的原理细节，主要记录实践的方法和工具。如果你对编译器原理不熟悉的话，推荐阅读</p>
+<ul>
+  <li><a href="https://book.douban.com/subject/3296317/">《编译原理》（龙书）</a></li>
+  <li><a href="https://book.douban.com/subject/1758653/">lex &amp; yacc</a></li>
+  <li><a href="https://dickgrune.com/Books/PTAPG_1st_Edition/BookBody.pdf">parsing techniques</a></li>
+</ul>
+
+<p>以及 PLY 的<a href="http://www.dabeaz.com/ply/ply.html">文档</a> 和 <a href="https://github.com/eliben/pycparser">pycparser</a> 的源码。</p>
+
+<p>为了方便理解，接下来的内容都基于一个简单的 c 源码: <code class="language-plaintext highlighter-rouge">test.c</code></p>
+
+<p>test.c</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>int main() {
+    int x = 1;
+    int y = 2;
+    return x + y;
+}
+</code></pre></div></div>
+
+<h2 id="lexical-analysis词法分析">Lexical Analysis(词法分析)</h2>
+
+<h3 id="基本概念">基本概念</h3>
+
+<p>词法分析是编译器的第一个步骤，读入字符流（源代码）分离为单词（token）序列。对于每个 token，词法分析器生成 <code class="language-plaintext highlighter-rouge">(token-name, attribute-value)</code> 形式的输出。</p>
+
+<p>例如</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>x = y + 1
+</code></pre></div></div>
+
+<p>经过 tokenizer 处理后得到的 token 如下</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code> 'x','=', 'y','+','1'
+</code></pre></div></div>
+
+<p>而 token 通常需要定义一个名字用于区分其类型</p>
+
+<p>例如</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>'ID', 'EQUALS', 'PLUS', 'NUMBER'
+</code></pre></div></div>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>('ID','x'), ('EQUALS','='), ('ID','y'), 
+('PLUS','+'), ('NUMBER','1')
+</code></pre></div></div>
+
+<p>常用的词法分析器生成工具为 flex，指定关键字和 token 的正则表达式即可将源码分离为 token 流。</p>
+
+<p>当然，我们也可以手动构造一个自动机来识别 token，具体的例子可以参考我以前在学校上编译原理课时的课后作业 <a href="https://github.com/Mithrilwoodrat/simple_complier/blob/master/scanner.c"><code class="language-plaintext highlighter-rouge">scanner.c</code></a>。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ch = getc(fin);
+    while(ch != EOF)
+    {
+        while(ch == ' '||ch == '\n' ||ch == '\t'||ch == '\r')
+        {
+            if(ch == '\n')
+                linenum++;
+            ch = getc(fin);
+        }
+        if (isalpha(ch))
+        {
+            token[0] = ch;
+            i = 1;
+            ch = getc(fin);
+            while(isalnum(ch))
+            {
+                token[i++] = ch;
+                ch = getc(fin);
+            }
+            token[i] = '\0';
+            n = 0;
+            while((n&lt;keywordSum)&amp;&amp;strcmp(token,keyword[n]))
+                n++;
+            if (n &gt;= keywordSum)
+                fprintf(fout,"%s\t%s\n","ID",token);
+            else
+                fprintf(fout,"%s\t%s\n",token,token);
+        }
+        /* numbers */
+        else if (isdigit(ch))
+        {
+            token[0] = ch;
+            i = 1;
+            ch = getc(fin);
+            while(isdigit(ch))
+            {
+                token[i++] = ch;
+                ch = getc(fin);
+            }
+            token[i] = '\0';
+            fprintf(fout,"%s\t%s\n","NUM",token);
+        }
+        /* {}*();,: */
+        else if (strchr(singleword,ch) &gt; 0)
+        {
+            token[0] = ch;
+            token[1] = '\0';
+            ch = getc(fin);
+            fprintf(fout,"%s\t%s\n",token,token);
+        }
+        ....
+</code></pre></div></div>
+
+<p>scanner 预先读取一个字符，判断当前缓冲区中的字符串是否满足预先定义的 token 中的某一种，满足则输出 token 并继续解析。</p>
+
+<h3 id="clang-的-lexer">clang 的 Lexer</h3>
+
+<p>clang 的 Lexer 为手工编写，位于 <a href="https://clang.llvm.org/doxygen/Lexer_8h_source.html"><code class="language-plaintext highlighter-rouge">/inclue/clang/Lex/Lexer.h</code></a>，其实现位于<a href="https://clang.llvm.org/doxygen/Lexer_8cpp_source.html"><code class="language-plaintext highlighter-rouge">/lib/Lex/Lexer.cpp</code></a>。 Token 定义于 <a href="https://clang.llvm.org/doxygen/Token_8h_source.html"><code class="language-plaintext highlighter-rouge">/inclue/clang/Lex/Token.h</code></a>。</p>
+
+<p>以 <code class="language-plaintext highlighter-rouge">test.c</code> 为例， 使用 clang 命令行 dump token 输出如下</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ clang -Xclang -dump-tokens test.c
+int 'int'	 [StartOfLine]	Loc=&lt;test.c:1:1&gt;
+identifier 'main'	 [LeadingSpace]	Loc=&lt;test.c:1:5&gt;
+l_paren '('		Loc=&lt;test.c:1:9&gt;
+r_paren ')'		Loc=&lt;test.c:1:10&gt;
+l_brace '{'	 [LeadingSpace]	Loc=&lt;test.c:1:12&gt;
+int 'int'	 [StartOfLine] [LeadingSpace]	Loc=&lt;test.c:2:5&gt;
+identifier 'x'	 [LeadingSpace]	Loc=&lt;test.c:2:9&gt;
+equal '='	 [LeadingSpace]	Loc=&lt;test.c:2:11&gt;
+numeric_constant '1'	 [LeadingSpace]	Loc=&lt;test.c:2:13&gt;
+semi ';'		Loc=&lt;test.c:2:14&gt;
+int 'int'	 [StartOfLine] [LeadingSpace]	Loc=&lt;test.c:3:5&gt;
+identifier 'y'	 [LeadingSpace]	Loc=&lt;test.c:3:9&gt;
+equal '='	 [LeadingSpace]	Loc=&lt;test.c:3:11&gt;
+numeric_constant '2'	 [LeadingSpace]	Loc=&lt;test.c:3:13&gt;
+semi ';'		Loc=&lt;test.c:3:14&gt;
+return 'return'	 [StartOfLine] [LeadingSpace]	Loc=&lt;test.c:4:5&gt;
+identifier 'x'	 [LeadingSpace]	Loc=&lt;test.c:4:12&gt;
+plus '+'	 [LeadingSpace]	Loc=&lt;test.c:4:14&gt;
+identifier 'y'	 [LeadingSpace]	Loc=&lt;test.c:4:16&gt;
+semi ';'		Loc=&lt;test.c:4:17&gt;
+r_brace '}'	 [StartOfLine]	Loc=&lt;test.c:5:1&gt;
+eof ''		Loc=&lt;test.c:5:2&gt;
+</code></pre></div></div>
+
+<h3 id="naivecompiler-中的-lex">NaiveCompiler 中的 lex</h3>
+
+<p>使用 PLY 的 lex 模块，可以参考 naivecompiler 中的 <a href="https://github.com/Mithrilwoodrat/naivecompiler/blob/llvm-6.0/c_parser.py"><code class="language-plaintext highlighter-rouge">c_parser.py</code></a>, 第一步需要定义一个 Lex 类，进行初始化，接下来定义的内容都需要放在这个类中。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>from ply import lex
+from ply.lex import TOKEN
+
+class Lexer(object):
+    def __init__(self, **kwargs):
+        self.lexer = lex.lex(object=self, **kwargs)
+</code></pre></div></div>
+
+<p>其中 <code class="language-plaintext highlighter-rouge">self.lexer</code> 变量实例化了 lex 对象，并将 <code class="language-plaintext highlighter-rouge">self</code> 即 <code class="language-plaintext highlighter-rouge">Lexer</code> 类自身作为参数传给了 lex 实例，这样 lex 将识别并使用 <code class="language-plaintext highlighter-rouge">Lexer</code> 类中特定的成员函数和成员变量。</p>
+
+<p>然后第一步需要定义语言涉及到的 token，以 naivecompiler 为例，涉及到的 token 如下</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>tokens = (
+    "ID", "INT_CONST", "FLOAT_CONST", "CHAR_CONST", "NORMALSTRING",
+    "IF", "ELSE", 'WHILE', 'RETURN', 'BREAK', 'CONTINUE',
+    "PLUS", "MINUS", "TIMES", "DIVIDES", "EQUALS", "GT", "LT", "LAND", "LOR",
+    "BAND",
+    'INT','CHAR', 'FLOAT',
+    "GE", 'LE', 'NE', 'EQ',
+    "LBRACE", "RBRACE", "LBRACKET", "RBRACKET", "LPAREN","RPAREN","SEMI","COMMA","VOID",
+    "COMMENTS",
+    "EXTERN", "STATIC"
+)
+</code></pre></div></div>
+
+<p>将 token 元组赋值给 Lexer 类中的 tokens 变量，ply 的 lex 模块会自动处理。 
+C 语言中的 token 包括：变量名、数字、字符串常量、关键字和各种符号等等。</p>
+
+<p>接下来定义每个 token 的正则表达式，以 <code class="language-plaintext highlighter-rouge">t_</code> + token 的名字命名，放在 Lexer 类中(Python 中在类里生命的变量都在同一个作用域里，即该类自身,可以用在成员函数中以 self.变量名 的方式访问)</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>t_INT_CONST = r'[0-9]+'
+t_PLUS = r'\+'
+t_MINUS = r'-'
+t_TIMES = r'\*'
+t_BAND = r'&amp;'
+t_DIVIDES = r'/'
+t_EQUALS  = r'='
+t_GT = r'&gt;'
+t_LT = r'&lt;'
+t_GE = r'&gt;='
+t_LE = r'&lt;='
+t_EQ = r'=='
+t_NE = r'!='
+t_LBRACE = r'\{'
+t_RBRACE = r'\}'
+t_LBRACKET = r'\['
+t_RBRACKET = r'\]'
+t_LPAREN  = r'\('
+t_RPAREN  = r'\)'
+t_SEMI = r';'
+t_COMMA = r','
+....
+# Ignored characters
+t_ignore = " \t"
+</code></pre></div></div>
+
+<p>其中 <code class="language-plaintext highlighter-rouge">t_ignore</code> 是一个特殊的变量，赋值给该变量的字符会被 Lexer 忽略，在 naivecompiler 中忽略的字符为空格和制表符。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>identifier = r'[a-zA-Z_][0-9a-zA-Z_]*'
+@TOKEN(identifier)
+def t_ID(self, t):
+    if t.value in self.keywords:
+        t.type =  self.keywords[t.value]
+    return t
+</code></pre></div></div>
+
+<p>除了以定义 <code class="language-plaintext highlighter-rouge">t_&lt;TOKEN&gt;</code> 成员变量的方式来定义 TOKEN 的正则以外，还可以定义 <code class="language-plaintext highlighter-rouge">t_&lt;TOKEN&gt;</code> 成员函数，并通过 <code class="language-plaintext highlighter-rouge">@TOKEN(pattern)</code> 装饰符的方式定义其正则，其中 pattern 是对应的正则的内容。上面的例子中，以 <code class="language-plaintext highlighter-rouge">identifier</code> 变量定义了 “变量名” TOKEN 的正则。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>def t_COMMENTS(self, t):
+    r'\/\*(.*\n)*.*\*\/'
+    pass
+
+def t_newline(self, t):
+    r'\n+'
+    t.lexer.lineno += t.value.count("\n")
+</code></pre></div></div>
+
+<p>除了用装饰符来定义正则，还可以在成员函数的第一行指定其正则。例如上面的 <code class="language-plaintext highlighter-rouge">t_COMMENTS</code> 函数，识别出注释后忽略该 TOKEN。以及 <code class="language-plaintext highlighter-rouge">t_newline</code> 函数识别换行符，并将文件行数信息返回给 lexer。</p>
+
+<p>PLY 的 lex 库中还有一个比较重要的函数为 <code class="language-plaintext highlighter-rouge">t_error</code>， lex 中遇到的不满足上面 TOEKN 定义的错误字符会回调该函数。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>def t_error(self, t):
+    print("Illegal character '%s'" % t.value[0])
+    t.lexer.skip(1)
+</code></pre></div></div>
+
+<p>我们可以在该函数中打印出错误的字符并指定 lexer 忽略这些字符。</p>
+
+<p>在定义好我们的 Lexer 后，可以使用下面的函数测试其效果。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code># Test it output
+def test(self, data):
+    self.input(data)
+
+    while True:
+        tok = self.token()
+        if tok:
+            print(tok)
+        else:
+            break
+</code></pre></div></div>
+
+<p>以 <code class="language-plaintext highlighter-rouge">test.c</code> 为例，得到的结果如下:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>LexToken(INT,'int',1,0)
+LexToken(ID,'main',1,4)
+LexToken(LPAREN,'(',1,8)
+LexToken(RPAREN,')',1,9)
+LexToken(LBRACE,'{',1,11)
+LexToken(INT,'int',2,17)
+LexToken(ID,'x',2,21)
+LexToken(EQUALS,'=',2,23)
+LexToken(INT_CONST,'1',2,25)
+LexToken(SEMI,';',2,26)
+LexToken(INT,'int',3,32)
+LexToken(ID,'y',3,36)
+LexToken(EQUALS,'=',3,38)
+LexToken(INT_CONST,'2',3,40)
+LexToken(SEMI,';',3,41)
+LexToken(RETURN,'return',4,47)
+LexToken(ID,'x',4,54)
+LexToken(PLUS,'+',4,56)
+LexToken(ID,'y',4,58)
+LexToken(SEMI,';',4,59)
+LexToken(RBRACE,'}',5,61)
+</code></pre></div></div>
+
+<h2 id="syntax-analysis语法分析">Syntax Analysis(语法分析)</h2>
+
+<h3 id="基本概念-1">基本概念</h3>
+
+<p>语法分析是编译器的第二个步骤，语法分析器(Parser)读取词法分析产生的 TOKEN 流，生成语法树(AST)。Parser 中通常使用 <a href="https://en.wikipedia.org/wiki/Backus%E2%80%93Naur_form">BNF</a> 来定义上下文无关文法，通过定义的文法生成 <a href="https://en.wikipedia.org/wiki/Nondeterministic_finite_automaton">NFA</a> 读取 TOKEN 并生成 AST。</p>
+
+<p>使用 BNF 定义的语言通常会定义一系列如下的文法</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;symbol&gt; ::= __expression__ 
+</code></pre></div></div>
+
+<p>其中 Symbol 为非终结符号。 <strong>expression</strong> 由一个或多个由 <code class="language-plaintext highlighter-rouge">'|'</code> 分割的 symbol 序列组成。 从未出现在左边的符号为“终结符”</p>
+
+<p><a href="https://en.wikipedia.org/wiki/Parsing">Parser</a> 按解析 token 的顺序可以分为自顶向下和自低向上两种。</p>
+
+<p>其中自顶向下又有 <a href="https://en.wikipedia.org/wiki/LL_parser">LL Parser</a> (需要消除左递归)和 <a href="https://en.wikipedia.org/wiki/Recursive_descent_parser">递归下降</a> (可能需要回溯)两种。</p>
+
+<p>LL Parser 一般为手工编写，从左至右按顺序读取 TOKEN，处理没有歧义的上下无关文法定义的语言。根据其提前读取的 TOEKN 个数(k)称为 LL(k) Parser, 最常见的即是 LL(1) Parser。简单的 LL(1) Parser 可以参考我以前在学写的课后作业–
+<a href="https://github.com/Mithrilwoodrat/simple_complier/blob/master/parser.c">parser.c</a></p>
+
+<p>其定义的部分语法如下:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;program&gt;→{&lt;declaration_list&gt;&lt;statement_list&gt;}
+&lt;declaration_list&gt;→&lt;declaration_list&gt;’  
+  &lt;declaration_list&gt;’→ int ID &lt;declaration_list&gt;’ | ε
+</code></pre></div></div>
+
+<p>其中 <code class="language-plaintext highlighter-rouge">ε</code> 表示空字符串，代表 declaration_list 结束。</p>
+
+<p>根据语法可以构造如下的自动机:</p>
+
+<p align="center">
+  <img src="/imgs/LL(1).png" />
+</p>
+
+<p>其部分代码如下:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>int program()
+{
+    int es;
+    fscanf(fp,"%s %s\n",&amp;token,&amp;token1);
+    printf("%s %s\n", token,token1);
+    if(strcmp(token,"{"))
+    {
+        printf("lack { !\n");
+        return 1;
+    }
+    fscanf(fp,"%s %s\n",&amp;token,&amp;token1);
+    printf("%s %s\n", token,token1);
+    if ((es = declaration_list()) !=0)
+        return es;
+    if ((es = statement_list()) !=0)
+        return es;
+    if(strcmp(token, "}"))
+    {
+        printf("lack } ! in program\n");
+        return 2;
+    }
+    return 0;
+}
+/*
+  &lt;declaration_list&gt;→&lt;declaration_list&gt;’  
+  &lt;declaration_list&gt;’→ int ID &lt;declaration_list&gt;’ | ε*/
+int declaration_list()
+{
+    return declaration_list2();
+}
+
+int declaration_list2()
+{
+    int es;
+    if(strcmp(token,"int")==0)
+    {
+        if ((es = declaration_stat()) != 0)
+            return es;
+        if ((es = declaration_list2()) != 0)
+            return es;
+    }
+    return 0;
+}
+
+int declaration_stat()
+{
+    fscanf(fp,"%s %s\n",&amp;token,&amp;token1);
+    printf("%s %s\n", token,token1);
+    if(strcmp(token,"ID"))
+    {
+        printf("lack identifier\n");
+        return 3;
+    }
+    fscanf(fp,"%s %s\n",&amp;token,&amp;token1);
+    printf("%s %s\n", token,token1);
+    if(strcmp(token,";"))
+    {
+        printf("lack semicolon - ; !\n");
+        return 4;
+    }
+    fscanf(fp,"%s %s\n",&amp;token,&amp;token1);
+    printf("%s %s\n", token,token1);
+    return 0;
+}
+</code></pre></div></div>
+
+<p>可以看到代码中严格按照上图中定义的 DFA 实现，每次预读下一个 TOKEN，判断当前状态是否符合语法。</p>
+
+<p>而自低向上的 Parser 为各类 <a href="https://en.wikipedia.org/wiki/LR_parser">LR</a> Parser。如 LR(k)、SLR 以及 LALR 等等。</p>
+
+<p>YACC 使用的便是 LR 算法，即从左至右读取 token，根据语法生成的自动机决定是否将 token 放入栈中，如果栈顶的元素满足一个语法(grammer)右侧的定义则将栈中的元素按规则替换为语法左侧定义的内容，再继续解析剩下的 token。这种方法又叫 shift-reduce parsing。</p>
+
+<p>根据 PLY 的<a href="http://www.dabeaz.com/ply/ply.html">文档</a>，YACC 解析表达式 <code class="language-plaintext highlighter-rouge">3 + 5 * (10 - 20)</code> 的过程如下:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code> Step Symbol Stack           Input Tokens            Action
+ ---- ---------------------  ---------------------   -------------------------------
+ 1                           3 + 5 * ( 10 - 20 )$    Shift 3
+ 2    3                        + 5 * ( 10 - 20 )$    Reduce factor : NUMBER
+ 3    factor                   + 5 * ( 10 - 20 )$    Reduce term   : factor
+ 4    term                     + 5 * ( 10 - 20 )$    Reduce expr : term
+ 5    expr                     + 5 * ( 10 - 20 )$    Shift +
+ 6    expr +                     5 * ( 10 - 20 )$    Shift 5
+ 7    expr + 5                     * ( 10 - 20 )$    Reduce factor : NUMBER
+ 8    expr + factor                * ( 10 - 20 )$    Reduce term   : factor
+ 9    expr + term                  * ( 10 - 20 )$    Shift *
+ 10   expr + term *                  ( 10 - 20 )$    Shift (
+ 11   expr + term * (                  10 - 20 )$    Shift 10
+ 12   expr + term * ( 10                  - 20 )$    Reduce factor : NUMBER
+ 13   expr + term * ( factor              - 20 )$    Reduce term : factor
+ 14   expr + term * ( term                - 20 )$    Reduce expr : term
+ 15   expr + term * ( expr                - 20 )$    Shift -
+ 16   expr + term * ( expr -                20 )$    Shift 20
+ 17   expr + term * ( expr - 20                )$    Reduce factor : NUMBER
+ 18   expr + term * ( expr - factor            )$    Reduce term : factor
+ 19   expr + term * ( expr - term              )$    Reduce expr : expr - term
+ 20   expr + term * ( expr                     )$    Shift )
+ 21   expr + term * ( expr )                    $    Reduce factor : (expr)
+ 22   expr + term * factor                      $    Reduce term : term * factor
+ 23   expr + term                               $    Reduce expr : expr + term
+ 24   expr                                      $    Reduce expr
+ 25                                             $    Success!
+</code></pre></div></div>
+
+<h3 id="clang-中的-parser">Clang 中的 Parser</h3>
+
+<p>Clang 中使用的是手工编写的自顶向下的递归下降 Parser。</p>
+
+<p>以 test.c 为例， 使用 clang 命令行 dump ast 的方法参考 <a href="https://github.com/Mithrilwoodrat/naivecompiler/blob/master/tests/dump_ast.sh"><code class="language-plaintext highlighter-rouge">dump_ast.sh</code></a>, 输出如下</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ clang -Xclang -ast-dump -fsyntax-only test.c
+...
+`-FunctionDecl 0x7fffee2c5ec0 &lt;test.c:1:1, line:5:1&gt; line:1:5 main 'int ()'
+  `-CompoundStmt 0x7fffee2c61c0 &lt;col:12, line:5:1&gt;
+    |-DeclStmt 0x7fffee2c6038 &lt;line:2:5, col:14&gt;
+    | `-VarDecl 0x7fffee2c5fb8 &lt;col:5, col:13&gt; col:9 used x 'int' cinit
+    |   `-IntegerLiteral 0x7fffee2c6018 &lt;col:13&gt; 'int' 1
+    |-DeclStmt 0x7fffee2c60e8 &lt;line:3:5, col:14&gt;
+    | `-VarDecl 0x7fffee2c6068 &lt;col:5, col:13&gt; col:9 used y 'int' cinit
+    |   `-IntegerLiteral 0x7fffee2c60c8 &lt;col:13&gt; 'int' 2
+    `-ReturnStmt 0x7fffee2c61a8 &lt;line:4:5, col:16&gt;
+      `-BinaryOperator 0x7fffee2c6180 &lt;col:12, col:16&gt; 'int' '+'
+        |-ImplicitCastExpr 0x7fffee2c6150 &lt;col:12&gt; 'int' &lt;LValueToRValue&gt;
+        | `-DeclRefExpr 0x7fffee2c6100 &lt;col:12&gt; 'int' lvalue Var 0x7fffee2c5fb8 'x' 'int'
+        `-ImplicitCastExpr 0x7fffee2c6168 &lt;col:16&gt; 'int' &lt;LValueToRValue&gt;
+          `-DeclRefExpr 0x7fffee2c6128 &lt;col:16&gt; 'int' lvalue Var 0x7fffee2c6068 'y' 'int'
+</code></pre></div></div>
+
+<h3 id="naivecompiler-中的-parser">NaiveCompiler 中的 Parser</h3>
+
+<p>使用 PLY 的 parser(yacc) 模块，可以参考 naivecompiler 中的 <a href="https://github.com/Mithrilwoodrat/naivecompiler/blob/llvm-6.0/c_parser.py"><code class="language-plaintext highlighter-rouge">c_parser.py</code></a>, 第一步需要定义一个 Parser 类，在初始化该类时同时初始化 Lexer，并获取 Lexer 的 tokens。参考 PLY 的<a href="http://www.dabeaz.com/ply/ply.html#ply_nn23">文档</a></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>class Parser(object):
+    def __init__(self):
+        self.lex = Lexer()
+        self.tokens = self.lex.tokens
+        self.parser = yacc.yacc(module=self)
+
+    def parse(self, text):
+        return self.parser.parse(input=text, lexer=self.lex)
+</code></pre></div></div>
+
+<p>然后根据 PLY yacc 的文档，需要将语法(grammar rule)定义为一个个的 Python 函数，格式如下:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>def p_declstmt(self, p):
+    """ declstmt : declaration SEMI
+    """
+    #     ^           ^         ^
+    #   p[0]        p[1]       p[2]
+    #decls = DeclarationList(p[1])
+    p[0] = DeclStmt(p[1])
+</code></pre></div></div>
+
+<p>函数以 <code class="language-plaintext highlighter-rouge">p_</code> 开头，其文档字符串(docstring)为该函数对应的语法(grammar)。每个函数只有一个参数 p 为语法对应的各个符号(Symbol)的序列，根据定义的语法，通过 <code class="language-plaintext highlighter-rouge">p[0]</code> 可以获取到语法冒号左边对应的符号，<code class="language-plaintext highlighter-rouge">p[1]</code> 取到 declaration 对应的递归的语法表示的数据， <code class="language-plaintext highlighter-rouge">p[2]</code> 取到的为 SEMI TOKEN 字符。</p>
+
+<p>PLY 的 yacc 模块中，第一个定义语法的函数决定了语法的起始符号，在 NaiveCompiler 中为 <code class="language-plaintext highlighter-rouge">translation_unit</code>， yacc 模块会根据定义的语法调用对应的语法处理函数，直到没有新的输入， parser 停止工作，并返回最终的结果(为起始语法中的最左符号)，在这里为 <code class="language-plaintext highlighter-rouge">translation_unit</code> 的 p[0] 即 <code class="language-plaintext highlighter-rouge">AST</code>。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>def p_translation_unit(self, p):
+    ''' translation_unit : external_decl
+                            | translation_unit external_decl
+    '''
+    if len(p) == 2:
+        p[0] = AST(p[1])
+    elif len(p) == 3:
+        p[1].l.append(p[2])
+        p[0] = p[1]
+    else:
+        logging.error("empty ast")
+</code></pre></div></div>
+
+<p>多个 Grammar Function 可以通过 <code class="language-plaintext highlighter-rouge">|</code> 组合在一起。如上面的</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>def p_external_decl(self, p):
+    ''' external_decl : funcdef
+                        | declstmt
+    '''
+    p[0] = p[1]
+</code></pre></div></div>
+
+<p>也可以由多个函数来定义，如上面的 <code class="language-plaintext highlighter-rouge">p_funcdecl</code> 和 <code class="language-plaintext highlighter-rouge">p_funcdecl2</code>。</p>
+
+<p>NaiveCompiler 所支持的语法为 C 语言的部分子集，其语法定义可以参考 <a href="https://www.amazon.com/Programming-Language-2nd-Brian-Kernighan/dp/0131103628">The C Programming Language</a> 的附录，以及 <a href="https://github.com/eliben/pycparser">pycparser</a> 的源码。</p>
+
+<h3 id="naivecompiler-中的-ast">NaiveCompiler 中的 AST</h3>
+
+<p>通常编译器先将源码解析为 Parser Tree，再通过 Visitor 模式遍历生成对应的语法树(AST)。
+NaiveCompiler 使用 PLY 中的 YACC 模块，在解析的过程中边解析边构建了语法树。</p>
+
+<p>NaiveCompiler 中 AST 定义于 <code class="language-plaintext highlighter-rouge">c_ast.py</code> 中。语法树本身的数据结构就是树，其节点定义如下。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>class ASTNode(object):
+    attr_names = ()
+    def __init__(self):
+        self.node_name = "ASTNode"
+        
+    def show(self, buf=sys.stdout, offset=0):
+        buf.write(' '*offset + self.__class__.__name__+ ': ')
+        
+        if self.attr_names:
+            nvlist = [(n, getattr(self,n)) for n in self.attr_names]
+            attrstr = ', '.join('%s=%s' % nv for nv in nvlist)
+            buf.write(attrstr)
+        buf.write('\n')
+        
+        for  child in self.children():
+            child.show(offset = offset + 2)
+
+    def children(self):
+        raise NotImplementedError
+</code></pre></div></div>
+
+<p>每一个语法树节点都包含其属性和子节点(可能为空)。show 函数定义了该节点如何打印。</p>
+
+<p>语法树的根节点为 AST 节点，在 c_paser.py 中 Parser 最后返回的即为该对象。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>class AST(ASTNode):
+    def __init__(self, trans_unit):
+        self.l = [trans_unit]
+
+    def children(self):
+        return self.l
+</code></pre></div></div>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>def p_translation_unit(self, p):
+        ''' translation_unit : external_decl
+                             | translation_unit external_decl
+        '''
+        if len(p) == 2:
+            p[0] = AST(p[1])
+        elif len(p) == 3:
+            p[1].l.append(p[2])
+            p[0] = p[1]
+        else:
+            logging.error("empty ast")
+</code></pre></div></div>
+
+<p>可以看到 Parser 中第一个定义的语法函数即为 <code class="language-plaintext highlighter-rouge">p_translation_unit</code>，其中 <code class="language-plaintext highlighter-rouge">translation_unit</code> 为语法规则中最左侧的符号，
+所以该函数返回的对象，即 p[0]=AST 为 Parser 的最终结果。</p>
+
+<p>同时在该函数中也可以看到，当右边的符号只有一个时，p[1] 对应 <code class="language-plaintext highlighter-rouge">external_decl</code> ，可以传入 AST 的 init 函数，初始化 AST 对象。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>def p_external_decl(self, p):
+    ''' external_decl : funcdef
+                        | declstmt
+    '''
+    p[0] = p[1]
+
+def p_funcdecl(self, p):
+    ''' funcdecl : storage type methodsymbol LPAREN param_list RPAREN'''
+    p[0] = FuncDecl(p[2], p[3], p[5], p[1])
+
+def p_funcdecl_2(self, p):
+    ''' funcdecl : type methodsymbol LPAREN param_list RPAREN'''
+    p[0] = FuncDecl(p[1], p[2], p[4])
+</code></pre></div></div>
+
+<p>而 <code class="language-plaintext highlighter-rouge">external_decl</code> 可以 resolve 到 declstmt 最后到 funcdecl，所以自顶向下观察的话， AST 的子节点的可能为 FuncDecl。</p>
+
+<p>NaiveCompiler 中，使用 <code class="language-plaintext highlighter-rouge">python compiler.py --show-ast test.c</code> 可以打印出源码对应的语法树，以上面的 test.c 为例，打印的语法树如下:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>----------- show ast ------------
+AST:
+  FuncDef: return_type=int, storage=extern
+    MethodSymbol: name=main
+    DeclarationList:
+    StmtList:
+      DeclStmt:
+        TypeDecl: _type=int, storage=auto
+          VariableSymbol: name=x
+          Const: _type=int, val=1
+      DeclStmt:
+        TypeDecl: _type=int, storage=auto
+          VariableSymbol: name=y
+          Const: _type=int, val=2
+      ReturnStmt:
+        BinaryOp: op=+
+          VariableSymbol: name=x
+          VariableSymbol: name=y
+</code></pre></div></div>
+
+  </article>
+
+</div>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function () {
+        var s = document.createElement('script'); s.async = true;
+        s.type = 'text/javascript';
+        s.src = '//' + disqus_shortname + '.disqus.com/count.js';
+        (document.getElementsByTagName('HEAD')[0] || document.getElementsByTagName('BODY')[0]).appendChild(s);
+    }());
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/raphael/2.1.0/raphael-min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+<script src="https://flowchart.js.org/flowchart-latest.js"></script>
+<script src="/js/highlight.min.js"></script>
+<script src="/js/toc.js"></script>
+<script src="/js/qrcode.min.js"></script>
+<script>
+if (!String.prototype.format) {
+    String.prototype.format = function() {
+        var args = arguments;
+        return this.replace(/{(\d+)}/g, function(match, number) { 
+            return typeof args[number] != 'undefined'
+                ? args[number]
+                : match
+            ;
+        });
+    };
+}
+
+$('pre code').each(function(i, block) {
+    hljs.highlightBlock(block);
+});
+
+$('.language-flow').each(function(i, block) {
+    console.log(block);
+    code = $(this).text();
+    diagram = flowchart.parse(code);
+    canvas_id = 'flow'+ i;
+    console.log(canvas_id);
+    temp = "<div id='{0}'> </div>".format(canvas_id);
+    console.log(temp);
+    $(this).html(temp);
+    diagram.drawSVG(canvas_id, {
+        'x': 0,
+        'y': 0,
+        'line-width': 3,
+        'line-length': 50,
+        'text-margin': 10,
+        'font-size': 14,
+    });	
+});
+
+$('#toc').toc({
+    noBackToTopLinks: true,
+    listType: 'ul',
+    title: 'TOC',
+});
+
+var url = location.href;
+console.log(url);
+var qrcode = new QRCode("qrcode", {
+    text: url,
+    width: 128,
+    height: 128,
+    colorDark : "#000000",
+    colorLight : "#ffffff",
+    correctLevel : QRCode.CorrectLevel.H
+});
+
+$(document).ready(function () {
+    $('#show_qrcode').on('mouseenter', function () {
+        $('#qrcode').show();
+        $(this).css({
+            "text-decoration": "underline"
+        });
+    }).on('mouseleave', function () {
+        $('#qrcode').hide();
+        $(this).css({
+            "text-decoration": ''
+        });
+    });;
+});
+</script>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col  footer-col-1">
+        <ul class="contact-list">
+	  <li>
+          <li><a href="mailto:mithrilwoodrat@gmail.com">mithrilwoodrat@gmail.com</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col  footer-col-2">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/Mithrilwoodrat">
+              <span class="icon  icon--github">
+                <svg viewBox="0 0 16 16">
+                  <path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/>
+                </svg>
+              </span>
+              <span class="username">Mithrilwoodrat</span> 
+            </a>
+          </li>
+          
+        </ul>
+      </div>
+  </div>
+</footer>
+
+<script>
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-66599686-1', 'auto');
+  ga('send', 'pageview');
+
+</script>
+</body>
+</html>

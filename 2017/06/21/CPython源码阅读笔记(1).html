@@ -1,0 +1,1195 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>
+    CPython源码阅读笔记(1)
+    </title>
+  <link type="application/atom+xml" rel="alternate" href="/feed.xml" title="虚实" />
+  
+  <style>
+  table{
+    border-left:1px solid #000000;border-top:1px solid #000000;
+    width: 100%;
+    word-wrap:break-word; word-break:break-all;
+  }
+  table th{
+  text-align:center;
+  }
+  table th,td{
+    border-right:1px solid #000000;border-bottom:1px solid #000000;
+  }
+  </style>
+
+  <meta name="description" content="准备调试环境目前 CPython 的开发已经迁移到了 Github 上，可以直接去 Github clone 对应的分支。我们将基于 Python 2.7.13 版本， Linux x86_64 环境进行接下来的工作。下载好代码以后以">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/toc.css">
+  <link rel="canonical" href="/2017/06/21/CPython%E6%BA%90%E7%A0%81%E9%98%85%E8%AF%BB%E7%AC%94%E8%AE%B0%281%29">
+  <link rel="alternate" type="application/rss+xml" title="虚实" href="/feed.xml" />
+  <link rel="stylesheet" href="/css/highlight.min.css">
+  <link href="//cdn.staticfile.org/font-awesome/3.2.1/css/font-awesome.min.css" rel="stylesheet"media="all">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+    <div>
+      <a class="site-title" href="/">虚实</a>
+      <div class="site-pages">
+		<a class="site-page" href="/archive/">归档</a>
+		<a class="site-page" href="/categories/">分类</a>
+		<a class="site-page" href="/about/">关于</a>
+		<a class="site-page" href="/friend-links/">友情链接</a>
+        <a class="site-page" href="/recommends/">推荐</a>
+      </div>
+      <p class="site-sub-title">记录下折腾和学习的过程</p>
+    </div>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <div class="post">
+
+  <header class="post-header">
+    <h1 class="post-title">CPython源码阅读笔记(1)</h1>
+    <p class="post-meta">Jun 21, 2017 • admin</p>
+
+	<p class="post-meta"> categories :   <a href="/categories/#python"> python </a>  </p>
+    <div id="show_qrcode">
+        <a>扫描二维码</a>
+        <div id="qrcode" style="display:none;position:absolute;z-index:1"></div>
+    </div>
+  </header>
+  <div class="nav">
+      <div id="toc" class="toc"></div>
+  </div>
+  <article class="post-content">
+    <h2 id="准备调试环境">准备调试环境</h2>
+<p>目前 CPython 的开发已经迁移到了 Github 上，可以直接去 Github clone 对应的分支。
+我们将基于 Python 2.7.13 版本， Linux x86_64 环境进行接下来的工作。
+下载好代码以后以</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>./configure --with-pydebug
+
+make -j2
+</code></pre></div></div>
+
+<p>编译。</p>
+
+<p>调试可以直接使用 GDB， 然后使用 Emacs + Ctags 看代码。(喜欢使用 IDE 的话可以考虑 eclipse-cdt)</p>
+
+<h2 id="寻找参考资料">寻找参考资料</h2>
+
+<p>官方的 <a href="https://docs.python.org/devguide/">Python Developer’s Guide</a> 是开始时必备的资料。
+readthedocs 上另外一个版本的 <a href="http://cpython-devguide.readthedocs.io/index.html">Python Developer’s Guide</a> 更详细一点。
+<a href="https://docs.python.org/devguide/exploring.html">Exploring CPython’s Internals</a> 一节列出了 CPython 的目录结构，
+以及推荐了几篇很有参考价值的文章。</p>
+
+<ul>
+  <li><a href="https://hackmd.io/s/ByMHBMjFe">Internals of CPython</a> (这篇比较长，写的比较仔细)</li>
+  <li><a href="https://paper.dropbox.com/doc/Yet-another-guided-tour-of-CPython-XY7KgFGn88zMNivGJ4Jzv">Yet another guided tour of CPython</a>
+(这篇的作者是 Guido)</li>
+</ul>
+
+<p>可以参考 <a href="http://cpython-devguide.readthedocs.io/compiler/">devguide</a> 的 compiler 一节来调试 Python 解释器， 跟着执行流程一步步看代码。</p>
+
+<p>另外 <a href="http://pgbovine.net/index.html">Philip Guo 的博客</a> 上关于 Python 的博文也十分有价值。</p>
+
+<p>中文资料中 《Python 源码剖析》 一定不能错过。</p>
+
+<h2 id="从-main-开始">从 main 开始</h2>
+
+<p>在 gdb 中直接 <code class="language-plaintext highlighter-rouge">b main</code>，输入 <code class="language-plaintext highlighter-rouge">list</code> 可以看到对应 main 函数的代码为</p>
+
+<pre><code class="language-C">// Modules/python.c
+#include "Python.h"
+
+int
+main(int argc, char **argv)
+{
+	return Py_Main(argc, argv);
+}
+</code></pre>
+
+<p>在编辑器中打开对应文件，在 Python 2.7 中位于 <code class="language-plaintext highlighter-rouge">Modules/python.c</code>，
+该文件只是一个入口，直接调用了 <code class="language-plaintext highlighter-rouge">Py_Main</code>。<code class="language-plaintext highlighter-rouge">Py_Main</code> 位于 <code class="language-plaintext highlighter-rouge">Modules/main.c</code> 中，
+该函数的主要作用如下：</p>
+<ul>
+  <li>初始化环境变量和命令行参数</li>
+  <li>如果参数里有 <code class="language-plaintext highlighter-rouge">-R</code> 则调用 <code class="language-plaintext highlighter-rouge">_PyRandom_Init</code> 初始化 Hash 算法的随机数生成，使得 dict 对象中 key 的顺序每次启动时随机。</li>
+  <li>调用 <code class="language-plaintext highlighter-rouge">Py_Initialize</code> 初始化 Python 解释器</li>
+  <li>根据命令行选项决定是运行模块 <code class="language-plaintext highlighter-rouge">-m</code> <code class="language-plaintext highlighter-rouge">RunModule</code>， 还是运行一条语句 <code class="language-plaintext highlighter-rouge">-c</code> <code class="language-plaintext highlighter-rouge">PyRun_SimpleStringFlags</code>，
+ 或是运行一个文件<code class="language-plaintext highlighter-rouge">PyRun_AnyFileExFlags</code></li>
+</ul>
+
+<p>我们先跟一下 <code class="language-plaintext highlighter-rouge">PyRun_SimpleStringFlags</code>, 该函数添加了一个默认的 <code class="language-plaintext highlighter-rouge">__main__</code> 后直接调用了 <code class="language-plaintext highlighter-rouge">PyRun_StringFlags</code>。</p>
+
+<p>截取 <code class="language-plaintext highlighter-rouge">PyRun_StringFlags</code> 函数部分代码如下</p>
+
+<p><code class="language-plaintext highlighter-rouge">PyParser_ASTFromString</code> 对输入的源码进行词法语法分析生成 AST，<code class="language-plaintext highlighter-rouge">run_mod</code>生成字节码并运行。</p>
+
+<pre><code class="language-C">// Python/pythonrun.c PyRun_StringFlags
+PyObject *
+PyRun_StringFlags(const char *str, int start, PyObject *globals,
+                  PyObject *locals, PyCompilerFlags *flags)
+{
+    PyObject *ret = NULL;
+    mod_ty mod;
+    PyArena *arena = PyArena_New(); /* 为编译阶段申请一块内存池 */
+    if (arena == NULL)
+        return NULL;
+
+    mod = PyParser_ASTFromString(str, "&lt;string&gt;", start, flags, arena); /* 将语句解析为 AST */
+    if (mod != NULL)
+        ret = run_mod(mod, "&lt;string&gt;", globals, locals, flags, arena); /* 调用 run_mod */
+    PyArena_Free(arena);
+    return ret;
+}
+</code></pre>
+
+<h2 id="词法语法分析">词法语法分析</h2>
+
+<p><code class="language-plaintext highlighter-rouge">PyParser_ASTFromString</code> 先将源码解析为 Parser Tree，
+再调用 <code class="language-plaintext highlighter-rouge">PyAST_FromNode</code>，将 Parser Tree 转换为 AST。</p>
+
+<pre><code class="language-C">// Python/pythonrun.c 54 行 引用了 graminit 中的 grammar 结构，该结构将在下面几个函数中以 `g` 变量名传递 
+extern grammar _PyParser_Grammar; /* From graminit.c */ 
+// Python/pythonrun.c PyParser_ASTFromString
+mod_ty
+PyParser_ASTFromString(const char *s, const char *filename, int start,
+                       PyCompilerFlags *flags, PyArena *arena)
+{
+    mod_ty mod;
+    PyCompilerFlags localflags;
+    perrdetail err;
+    int iflags = PARSER_FLAGS(flags);
+
+    // 将源码解析为了 Parser Tree
+    node *n = PyParser_ParseStringFlagsFilenameEx(s, filename,
+                                    &amp;_PyParser_Grammar, start, &amp;err,
+                                    &amp;iflags);
+    if (flags == NULL) {
+        localflags.cf_flags = 0;
+        flags = &amp;localflags;
+    }
+    if (n) {
+        flags-&gt;cf_flags |= iflags &amp; PyCF_MASK;
+        // 将 Parser Tree 转换为 AST
+        mod = PyAST_FromNode(n, flags, filename, arena);
+        PyNode_Free(n);
+        return mod; // 返回 AST
+    }
+    else {
+        err_input(&amp;err);
+        return NULL;
+    }
+}
+</code></pre>
+
+<h3 id="生成-token">生成 TOKEN</h3>
+
+<pre><code class="language-C">// Parser/parsetok.c PyParser_ParseStringFlagsFilenameEx
+node *
+PyParser_ParseStringFlagsFilenameEx(const char *s, const char *filename,
+                          grammar *g, int start,
+                          perrdetail *err_ret, int *flags)
+{
+    struct tok_state *tok;
+
+    initerr(err_ret, filename);
+    // 初始化词法分析模块
+    if ((tok = PyTokenizer_FromString(s, start == file_input)) == NULL) {
+        err_ret-&gt;error = PyErr_Occurred() ? E_DECODE : E_NOMEM;
+        return NULL;
+    }
+
+    tok-&gt;filename = filename ? filename : "&lt;string&gt;";
+    if (Py_TabcheckFlag || Py_VerboseFlag) {
+        tok-&gt;altwarning = (tok-&gt;filename != NULL);
+        if (Py_TabcheckFlag &gt;= 2)
+            tok-&gt;alterror++;
+    }
+    // 调用 parsetok ，将源码转换为 token 序列
+    return parsetok(tok, g, start, err_ret, flags);
+</code></pre>
+
+<p>parsetok 循环直到读完整个字符串，将分出来的 token 添加到 parser 中， 最后返回 parser tree
+token 的 type 定义在 <code class="language-plaintext highlighter-rouge">Include/token.h</code> 中</p>
+
+<pre><code class="language-C">// Parser/parsetok.c parsetok
+static node *
+parsetok(struct tok_state *tok, grammar *g, int start, perrdetail *err_ret,
+         int *flags)
+{
+    // 初始化 parser 
+    if ((ps = PyParser_New(g, start)) == NULL) {
+    ....
+    // 获取 token type
+    type = PyTokenizer_Get(tok, &amp;a, &amp;b);
+    ....
+    // 将 token 赋值给 str
+    len = b - a; /* XXX this may compute NULL - NULL */
+    str = (char *) PyObject_MALLOC(len + 1);
+    if (len &gt; 0)
+        strncpy(str, a, len);
+    str[len] = '\0';
+    ....
+    // 将 token 添加到 parser tree 中
+    if ((err_ret-&gt;error =
+             PyParser_AddToken(ps, (int)type, str, tok-&gt;lineno, col_offset,
+                               &amp;(err_ret-&gt;expected))) != E_OK) {
+            if (err_ret-&gt;error != E_DONE) {
+                PyObject_FREE(str);
+                err_ret-&gt;token = type;
+            }
+            break;
+        }
+    ....
+    if (err_ret-&gt;error == E_DONE) {
+        n = ps-&gt;p_tree;
+        ps-&gt;p_tree = NULL;
+    }
+    else
+        n = NULL;
+    ....
+    done:
+        PyTokenizer_Free(tok); // 释放词法分析器
+    return n; // 返回 parser-&gt;p_tree
+}
+</code></pre>
+
+<p>以 <code class="language-plaintext highlighter-rouge">a = 1</code> 为例，循环5次得到的 str 和 type 依次为：</p>
+<ul>
+  <li>str: a, type: 1(NAME)</li>
+  <li>str: =, type: 22(EQUAL)</li>
+  <li>str: 1, type: 2(NUMBER)</li>
+  <li>str: \n, type: 4(NEWLINE)</li>
+  <li>str: 未初始化, type: 0(ENDMARKER)</li>
+</ul>
+
+<p>node 的结构定义在 <code class="language-plaintext highlighter-rouge">/Include/node.h</code> 中</p>
+
+<pre><code class="language-C">typedef struct _node {
+    short		n_type;
+    char		*n_str;
+    int			n_lineno;
+    int			n_col_offset;
+    int			n_nchildren;
+    struct _node	*n_child;
+} node;
+</code></pre>
+
+<h3 id="add-token-to-parser-tree">Add TOKEN to Parser Tree</h3>
+<p>使用 <code class="language-plaintext highlighter-rouge">export PYTHONDEBUG=1 </code> 开启 python 的调试模式，可以看到 python 将 TOKEN 解析为 Parser Tree 的过程。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>./Python-2.7.12/python -d -c 'a = 1'
+Token NAME/'a' ... It's a token we know
+....
+ DFA 'atom', state 0: Shift.
+  DFA 'atom', state 5: Direct pop.
+Token EQUAL/'=' ... It's a token we know
+....
+ DFA 'expr_stmt', state 1: Shift.
+Token NUMBER/'1' ... It's a token we know
+....
+  DFA 'atom', state 5: Direct pop.
+Token NEWLINE/'' ... It's a token we know
+....
+  DFA 'simple_stmt', state 3: Direct pop.
+  DFA 'stmt', state 1: Direct pop.
+Token NEWLINE/'' ... It's a token we know
+ DFA 'file_input', state 0: Shift.
+Token ENDMARKER/'' ... It's a token we know
+ DFA 'file_input', state 0: Shift.
+  DFA 'file_input', state 1: Direct pop.
+  ACCEPT.
+[35150 refs]
+</code></pre></div></div>
+
+<p>可以看到只有正确解析的 TOKEN 才会显示 <code class="language-plaintext highlighter-rouge">"Direct pop</code></p>
+
+<p>生成 TOKEN 后，按照语法规则生成 Parser Tree</p>
+
+<pre><code class="language-C">// Parser/parser.c PyParser_AddToken
+int
+PyParser_AddToken(register parser_state *ps, register int type, char *str,
+                  int lineno, int col_offset, int *expected_ret)
+{
+    ...
+    /* Loop until the token is shifted or an error occurred */
+    for (;;) {
+        ...
+        /* Pop while we are in an accept-only state */
+                while (s = &amp;d-&gt;d_state
+                                [ps-&gt;p_stack.s_top-&gt;s_state],
+                    s-&gt;s_accept &amp;&amp; s-&gt;s_narcs == 1) {
+                    D(printf("  DFA '%s', state %d: "
+                             "Direct pop.\n",
+                             d-&gt;d_name,
+                             ps-&gt;p_stack.s_top-&gt;s_state));
+        ...
+    }
+}
+</code></pre>
+
+<p>所以上面 Tree 的构建顺序为 <code class="language-plaintext highlighter-rouge">atom</code> <code class="language-plaintext highlighter-rouge">expr_stmt</code> <code class="language-plaintext highlighter-rouge">atom</code> <code class="language-plaintext highlighter-rouge">simple_stmt</code> <code class="language-plaintext highlighter-rouge">stmt</code> <code class="language-plaintext highlighter-rouge">file_input</code></p>
+
+<h3 id="parser-tree-to-ast">Parser Tree to AST</h3>
+
+<p>在上面的 <code class="language-plaintext highlighter-rouge">PyParser_ASTFromString</code> 函数中可以看到，在调用 <code class="language-plaintext highlighter-rouge">PyParser_ParseStringFlagsFilenameEx</code> 生成 Parser Tree ( concrete syntax tree ) 后，调用 <code class="language-plaintext highlighter-rouge">PyAST_FromNode</code> 生成 AST。</p>
+
+<pre><code class="language-C">// ast.c PyAST_FromNode
+mod_ty
+PyAST_FromNode(const node *n, PyCompilerFlags *flags, const char *filename,
+               PyArena *arena)
+{
+    ...
+    stmts = asdl_seq_new(num_stmts(n), arena); /* 为 AST 申请内存 */
+    if (!stmts)
+        return NULL;
+    for (i = 0; i &lt; NCH(n) - 1; i++) {
+        ch = CHILD(n, i);
+        if (TYPE(ch) == NEWLINE)
+            continue;
+        REQ(ch, stmt);
+        num = num_stmts(ch);
+        if (num == 1) {
+            s = ast_for_stmt(&amp;c, ch); /* 生成对应的 AST Node */
+            if (!s)
+                goto error;
+            asdl_seq_SET(stmts, k++, s); /* 将对应的 AST Node 设置到 asdl_seq 中对应的位置 */
+        }
+        ...
+        return Module(stmts, arena); /* 转换 asdl_seq 为 mod_ty， mod_ty 事实上只是一个对
+                                        asdl_seq 的简单封装，给 asdl_seq 加上了类型而已 */
+    }
+    ...
+}
+</code></pre>
+
+<p><code class="language-plaintext highlighter-rouge">asdl_seq</code> 结构定义在 <code class="language-plaintext highlighter-rouge">Include/asdl.h</code> 中，其实就是一个放 AST Node 的数组，根据注释可以看出，这个文件是由 <code class="language-plaintext highlighter-rouge">Parser/asdl_c.py</code> 生成的。</p>
+
+<pre><code class="language-C">/* It would be nice if the code generated by asdl_c.py was completely
+   independent of Python, but it is a goal the requires too much work
+   at this stage.  So, for example, I'll represent identifiers as
+   interned Python strings.
+*/
+
+/* XXX A sequence should be typed so that its use can be typechecked. */
+
+typedef struct {
+    int size;
+    void *elements[1];
+} asdl_seq;
+</code></pre>
+
+<p><code class="language-plaintext highlighter-rouge">asdl_c.py</code> 将 <code class="language-plaintext highlighter-rouge">Parser/Python.asdl</code> 中定义的 asdl 生成 C 代码，对应的 asdl 的实现在 <code class="language-plaintext highlighter-rouge">Parser/asdl.py</code> 中。</p>
+
+<p><code class="language-plaintext highlighter-rouge">ast_for_xxx</code> 是生成对应 xxx AST Node 的函数， <code class="language-plaintext highlighter-rouge">ast_for_stmt</code> 就是生成 stmt node (stmt_ty 由 asdl_c.py 生成)。</p>
+
+<p><code class="language-plaintext highlighter-rouge">ast_for_stmt</code> 其实就是一个巨大的 switch ，根据语法规则调用不同的 <code class="language-plaintext highlighter-rouge">ast_for_xxx</code>, 例如 <code class="language-plaintext highlighter-rouge">a = 1</code>，就会调用到 <code class="language-plaintext highlighter-rouge">ast_for_expr</code></p>
+
+<p><code class="language-plaintext highlighter-rouge">a = 1</code> 生成 AST 的 callstack 如下</p>
+
+<ul>
+  <li>ast_for_stmt</li>
+  <li>ast_for_expr_stmt</li>
+  <li>ast_for_testlist</li>
+  <li>ast_for_expr</li>
+</ul>
+
+<p>最后返回的 AST 可以由下面的 Python 代码查看</p>
+
+<pre><code class="language-Python">import ast
+t = ast.parse('a = 1')
+ast.dump(t)
+
+&gt;&gt;&gt; "Module(body=[Assign(targets=[Name(id='a', ctx=Store())], value=Num(n=1))])"
+</code></pre>
+
+<h2 id="ast-to-codeobject">AST to CodeObject</h2>
+
+<p>上面分析到 <code class="language-plaintext highlighter-rouge">PyParser_ASTFromString</code> 将源码解析为 AST (mod_ty)，调用 <code class="language-plaintext highlighter-rouge">run_mod</code> 函数。</p>
+
+<p><code class="language-plaintext highlighter-rouge">run_mod</code> 中有两个主要的函数:</p>
+
+<ul>
+  <li>PyAST_Compile,</li>
+  <li>PyEval_EvalCode</li>
+</ul>
+
+<p><code class="language-plaintext highlighter-rouge">PyAST_Compile</code> 将 AST 编译成 CodeObject，<code class="language-plaintext highlighter-rouge">PyEval_EvalCode</code> 运行编译后的 CodeObject。</p>
+
+<pre><code class="language-C">// Python/pythonrun.c run_mod
+static PyObject *
+run_mod(mod_ty mod, const char *filename, PyObject *globals, PyObject *locals,
+         PyCompilerFlags *flags, PyArena *arena)
+{
+    PyCodeObject *co;
+    PyObject *v;
+    co = PyAST_Compile(mod, filename, flags, arena);
+    if (co == NULL)
+        return NULL;
+    v = PyEval_EvalCode(co, globals, locals);
+    Py_DECREF(co);
+    return v;
+}
+</code></pre>
+
+<p>我们先看一下编译的过程</p>
+
+<h3 id="build-symbol-table">Build Symbol Table</h3>
+
+<p><code class="language-plaintext highlighter-rouge">PyAST_Compile</code> 里主要使用 <code class="language-plaintext highlighter-rouge">PySymtable_Build</code>, <code class="language-plaintext highlighter-rouge">compiler_mod</code> 两个函数</p>
+
+<pre><code class="language-C">// Python/compile.c PyAST_Compile
+PyCodeObject *
+PyAST_Compile(mod_ty mod, const char *filename, PyCompilerFlags *flags,
+              PyArena *arena)
+{
+    struct compiler c; // 初始化 compiler 结构
+    PyCodeObject *co = NULL;
+    PyCompilerFlags local_flags;
+    ...
+
+    if (!compiler_init(&amp;c))
+        return NULL;
+    c.c_filename = filename;
+    c.c_arena = arena;
+    c.c_future = PyFuture_FromAST(mod, filename);
+    ...
+
+    c.c_st = PySymtable_Build(mod, filename, c.c_future);
+
+    co = compiler_mod(&amp;c, mod);
+
+ finally:
+    compiler_free(&amp;c);
+    assert(co || PyErr_Occurred());
+    return co;
+}
+</code></pre>
+
+<p><code class="language-plaintext highlighter-rouge">PySymtable_Build</code> 遍历 AST 构建 Symbol table，存储一些类名、变量名之类的信息。</p>
+
+<pre><code class="language-C">struct symtable {
+    const char *st_filename; /* name of file being compiled */
+    struct _symtable_entry *st_cur; /* current symbol table entry */
+    struct _symtable_entry *st_top; /* module entry */
+    PyObject *st_symbols;    /* dictionary of symbol table entries */
+    PyObject *st_stack;      /* stack of namespace info */
+    PyObject *st_global;     /* borrowed ref to MODULE in st_symbols */
+    int st_nblocks;          /* number of blocks */
+    PyObject *st_private;        /* name of current class or NULL */
+    PyFutureFeatures *st_future; /* module's future features */
+};
+
+typedef struct _symtable_entry {
+    PyObject_HEAD
+    PyObject *ste_id;        /* int: key in st_symbols */
+    PyObject *ste_symbols;   /* dict: name to flags */
+    PyObject *ste_name;      /* string: name of block */
+    PyObject *ste_varnames;  /* list of variable names */
+    PyObject *ste_children;  /* list of child ids */
+    _Py_block_ty ste_type;   /* module, class, or function */
+    int ste_unoptimized;     /* false if namespace is optimized */
+    int ste_nested;      /* true if block is nested */
+    unsigned ste_free : 1;        /* true if block has free variables */
+    unsigned ste_child_free : 1;  /* true if a child block has free vars,
+                                     including free refs to globals */
+    unsigned ste_generator : 1;   /* true if namespace is a generator */
+    unsigned ste_varargs : 1;     /* true if block has varargs */
+    unsigned ste_varkeywords : 1; /* true if block has varkeywords */
+    unsigned ste_returns_value : 1;  /* true if namespace uses return with
+                                        an argument */
+    int ste_lineno;          /* first line of block */
+    int ste_opt_lineno;      /* lineno of last exec or import * */
+    int ste_tmpname;         /* counter for listcomp temp vars */
+    struct symtable *ste_table;
+} PySTEntryObject;
+</code></pre>
+
+<h3 id="build-cfg">Build CFG</h3>
+
+<p>AST 传入 <code class="language-plaintext highlighter-rouge">compiler_mod</code> 后会调用 <code class="language-plaintext highlighter-rouge">compiler_XXX</code> 生成 CFG。
+然后 <code class="language-plaintext highlighter-rouge">assemble</code> 会从 CFG 生成最后的 bytecode。</p>
+
+<pre><code class="language-C">// Python/compiler.c compiler_mod 
+static PyCodeObject *
+compiler_mod(struct compiler *c, mod_ty mod)
+{
+    PyCodeObject *co;
+    int addNone = 1;
+    ...
+    if (!compiler_enter_scope(c, module, mod, 0))
+        return NULL;
+    switch (mod-&gt;kind) {
+    case Module_kind:
+        if (!compiler_body(c, mod-&gt;v.Module.body)) {
+            compiler_exit_scope(c);
+            return 0;
+        }
+        break;
+    ...
+    }
+    co = assemble(c, addNone);
+    compiler_exit_scope(c);
+    return co;
+}
+</code></pre>
+
+<p>根据上面 AST 生成一节， <code class="language-plaintext highlighter-rouge">a = 1</code> 的 AST 为 <code class="language-plaintext highlighter-rouge">Module(body=[Assign(targets=[Name(id='a', ctx=Store())], value=Num(n=1))])</code>，所以将会执行 <code class="language-plaintext highlighter-rouge">compiler_body</code>。</p>
+
+<pre><code class="language-C">// Python/compiler.c compiler_body
+static int
+compiler_body(struct compiler *c, asdl_seq *stmts)
+{
+    ...
+    for (; i &lt; asdl_seq_LEN(stmts); i++)
+        VISIT(c, stmt, (stmt_ty)asdl_seq_GET(stmts, i));
+    ...
+}
+</code></pre>
+
+<p><code class="language-plaintext highlighter-rouge">VISIT</code> 是定义在 compiler.c 中的一个宏，根据 AST Node 的 Type，调用不同的 <code class="language-plaintext highlighter-rouge">compiler_visit_xxx</code> 函数。</p>
+
+<pre><code class="language-C">#define VISIT(C, TYPE, V) {\
+    if (!compiler_visit_ ## TYPE((C), (V))) \
+        return 0; \
+}
+</code></pre>
+
+<p>这里 <code class="language-plaintext highlighter-rouge">VISIT</code> 宏展开是 <code class="language-plaintext highlighter-rouge">compiler_visit_stmt</code>。</p>
+
+<pre><code class="language-C">// Python/compiler.c compiler_visit_stmt
+static int
+compiler_visit_stmt(struct compiler *c, stmt_ty s)
+{
+    ...
+    switch (s-&gt;kind) {
+        case Assign_kind:
+            n = asdl_seq_LEN(s-&gt;v.Assign.targets);
+            VISIT(c, expr, s-&gt;v.Assign.value);
+            for (i = 0; i &lt; n; i++) {
+                if (i &lt; n - 1)
+                    ADDOP(c, DUP_TOP);
+                VISIT(c, expr,
+                    (expr_ty)asdl_seq_GET(s-&gt;v.Assign.targets, i));
+            }
+            break;
+    }
+    ...
+}
+</code></pre>
+
+<p>首先调用 <code class="language-plaintext highlighter-rouge">VISIT(c, expr, s-&gt;v.Assign.value);</code> 也就是 <code class="language-plaintext highlighter-rouge">compiler_visit_expr</code> 函数。
+传入的参数为 <code class="language-plaintext highlighter-rouge">Assign.value</code>， 根据 AST <code class="language-plaintext highlighter-rouge">value=Num(n=1)</code>。可以在 gdb 中验证。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&gt;&gt; p e.kind
+$2 = Num_kind
+</code></pre></div></div>
+
+<pre><code class="language-C">// Python/compiler.c compiler_visit_expr
+static int
+compiler_visit_expr(struct compiler *c, expr_ty e)
+{
+    switch (e-&gt;kind) {
+        case Num_kind:
+        ADDOP_O(c, LOAD_CONST, e-&gt;v.Num.n, consts);
+        break;
+    }
+}
+</code></pre>
+
+<p><code class="language-plaintext highlighter-rouge">ADDOP_O</code> 是一个宏，用于将 opcode 添加到 compiler 结构中。添加 opcode 有以下几个宏：</p>
+
+<pre><code class="language-C">// 添加一个 opcode
+#define ADDOP(C, OP) { \
+    if (!compiler_addop((C), (OP))) \
+        return 0; \
+}
+
+
+#define ADDOP_IN_SCOPE(C, OP) { \
+    if (!compiler_addop((C), (OP))) { \
+        compiler_exit_scope(c); \
+        return 0; \
+    } \
+}
+
+// 添加一个 opcode ，带一个没有具体名字的参数，`a=1` 中的 value(Num(1))
+#define ADDOP_O(C, OP, O, TYPE) { \
+    if (!compiler_addop_o((C), (OP), (C)-&gt;u-&gt;u_ ## TYPE, (O))) \
+        return 0; \
+}
+
+// 添加一个 opcode， 带一个有名字的参数，如变量名
+#define ADDOP_NAME(C, OP, O, TYPE) { \
+    if (!compiler_addop_name((C), (OP), (C)-&gt;u-&gt;u_ ## TYPE, (O))) \
+        return 0; \
+}
+
+#define ADDOP_I(C, OP, O) { \
+    if (!compiler_addop_i((C), (OP), (O))) \
+        return 0; \
+}
+
+#define ADDOP_JABS(C, OP, O) { \
+    if (!compiler_addop_j((C), (OP), (O), 1)) \
+        return 0; \
+}
+
+#define ADDOP_JREL(C, OP, O) { \
+    if (!compiler_addop_j((C), (OP), (O), 0)) \
+        return 0; \
+}
+</code></pre>
+
+<p>所有带参数的 opcode 最后都会调用到 <code class="language-plaintext highlighter-rouge">compiler_addop_i</code>，AST 中的参数是数字或者变量名，到了 opcode 中都是一个 integer，为对应值在 compiler 结构中的下标。</p>
+
+<p>对应的 opcode 定义在 <code class="language-plaintext highlighter-rouge">include/opcode.h</code> 中，如 <code class="language-plaintext highlighter-rouge">opcode =100</code> 的定义为 <code class="language-plaintext highlighter-rouge">#define LOAD_CONST	100	/* Index in const list */</code></p>
+
+<pre><code class="language-C">/* Add an opcode with an integer argument.
+   Returns 0 on failure, 1 on success.
+*/
+static int
+compiler_addop_i(struct compiler *c, int opcode, int oparg)
+{
+    struct instr *i;
+    int off;
+    off = compiler_next_instr(c, c-&gt;u-&gt;u_curblock);
+    if (off &lt; 0)
+        return 0;
+    i = &amp;c-&gt;u-&gt;u_curblock-&gt;b_instr[off];
+    i-&gt;i_opcode = opcode;
+    i-&gt;i_oparg = oparg;
+    i-&gt;i_hasarg = 1;
+    compiler_set_lineno(c, off);
+    return 1;
+}
+</code></pre>
+
+<h3 id="assemble">assemble</h3>
+
+<p><code class="language-plaintext highlighter-rouge">compile_mod</code> 中，<code class="language-plaintext highlighter-rouge">compiler_xxx</code> 构建出了 CFG 调用 <code class="language-plaintext highlighter-rouge">assemble</code> 函数构建出最后的 CodeObject。</p>
+
+<pre><code class="language-C">static PyCodeObject *
+assemble(struct compiler *c, int addNone)
+{
+    basicblock *b, *entryblock;
+    struct assembler a;
+    int i, j, nblocks;
+    PyCodeObject *co = NULL;
+
+    /* Make sure every block that falls off the end returns None.
+       XXX NEXT_BLOCK() isn't quite right, because if the last
+       block ends with a jump or return b_next shouldn't set.
+     */
+    if (!c-&gt;u-&gt;u_curblock-&gt;b_return) {
+        NEXT_BLOCK(c);
+        if (addNone)
+            ADDOP_O(c, LOAD_CONST, Py_None, consts);
+        ADDOP(c, RETURN_VALUE);
+    }
+
+    // 找到 entryblock
+    nblocks = 0;
+    entryblock = NULL;
+    for (b = c-&gt;u-&gt;u_blocks; b != NULL; b = b-&gt;b_list) {
+        nblocks++;
+        entryblock = b;
+    }
+    ...
+    if (!assemble_init(&amp;a, nblocks, c-&gt;u-&gt;u_firstlineno))
+        goto error;
+    dfs(c, entryblock, &amp;a);
+
+    /* Can't modify the bytecode after computing jump offsets. */
+    assemble_jump_offsets(&amp;a, c);
+
+    /* Emit code in reverse postorder from dfs. */
+    for (i = a.a_nblocks - 1; i &gt;= 0; i--) {
+        b = a.a_postorder[i];
+        for (j = 0; j &lt; b-&gt;b_iused; j++)
+            if (!assemble_emit(&amp;a, &amp;b-&gt;b_instr[j]))
+                goto error;
+    }
+
+    if (_PyString_Resize(&amp;a.a_lnotab, a.a_lnotab_off) &lt; 0)
+        goto error;
+    if (_PyString_Resize(&amp;a.a_bytecode, a.a_offset) &lt; 0)
+        goto error;
+
+    co = makecode(c, &amp;a);
+ error:
+    assemble_free(&amp;a);
+    return co;
+}
+</code></pre>
+
+<p><code class="language-plaintext highlighter-rouge">assemble</code> 中先调用 <code class="language-plaintext highlighter-rouge">dfs</code> 以后序深度优先遍历 struct compiler(CFG)，将 CFG 平坦化，然后调用 <code class="language-plaintext highlighter-rouge">assemble_jump_offsets</code> 生成跳转地址。最后调用 <code class="language-plaintext highlighter-rouge">makecode</code> 生成 CodeObject。</p>
+
+<p>调试的过程中，可以使用 <code class="language-plaintext highlighter-rouge">dis</code> 模块来查看源码对应的字节码。将源码写入 <code class="language-plaintext highlighter-rouge">test.py</code>，
+然后调用 <code class="language-plaintext highlighter-rouge">python -m dis test.py</code> 即可。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>echo 'a=1' &gt; test.py
+python2 -m dis test.py                                                   
+  1           0 LOAD_CONST               0 (1)
+              3 STORE_NAME               0 (a)
+              6 LOAD_CONST               1 (None)
+              9 RETURN_VALUE
+
+</code></pre></div></div>
+
+<p>CodeObject 的结构定义在 <code class="language-plaintext highlighter-rouge">include/code.h</code> 中</p>
+
+<pre><code class="language-C">/* Bytecode object */
+typedef struct {
+    PyObject_HEAD
+    int co_argcount;		/* #arguments, except *args */
+    int co_nlocals;		/* #local variables */
+    int co_stacksize;		/* #entries needed for evaluation stack */
+    int co_flags;		/* CO_..., see below */
+    PyObject *co_code;		/* instruction opcodes */
+    PyObject *co_consts;	/* list (constants used) */
+    PyObject *co_names;		/* list of strings (names used) */
+    PyObject *co_varnames;	/* tuple of strings (local variable names) */
+    PyObject *co_freevars;	/* tuple of strings (free variable names) */
+    PyObject *co_cellvars;      /* tuple of strings (cell variable names) */
+    /* The rest doesn't count for hash/cmp */
+    PyObject *co_filename;	/* string (where it was loaded from) */
+    PyObject *co_name;		/* string (name, for reference) */
+    int co_firstlineno;		/* first source line number */
+    PyObject *co_lnotab;	/* string (encoding addr&lt;-&gt;lineno mapping) See
+				   Objects/lnotab_notes.txt for details. */
+    void *co_zombieframe;     /* for optimization only (see frameobject.c) */
+    PyObject *co_weakreflist;   /* to support weakrefs to code objects */
+} PyCodeObject;
+</code></pre>
+
+<h2 id="eval-codeobject">Eval CodeObject</h2>
+
+<p><code class="language-plaintext highlighter-rouge">run_mod</code> 中构建出 CodeObject 后调用 <code class="language-plaintext highlighter-rouge">PyEval_EvalCode</code> 运行 CodeObject。
+可以看到， <code class="language-plaintext highlighter-rouge">PyEval_EvalCode</code> 只是简单调用了 <code class="language-plaintext highlighter-rouge">PyEval_EvalCodeEx</code>。</p>
+
+<pre><code class="language-C">PyObject *
+PyEval_EvalCode(PyCodeObject *co, PyObject *globals, PyObject *locals)
+{
+    return PyEval_EvalCodeEx(co,
+                      globals, locals,
+                      (PyObject **)NULL, 0,
+                      (PyObject **)NULL, 0,
+                      (PyObject **)NULL, 0,
+                      NULL);
+}
+</code></pre>
+
+<p><code class="language-plaintext highlighter-rouge">PyEval_EvalCodeEx</code> 构建出 <code class="language-plaintext highlighter-rouge">PyFrameObject</code> 然后执行 <code class="language-plaintext highlighter-rouge">PyEval_EvalFrameEx</code></p>
+
+<pre><code class="language-C">// Python/ceval.c PyEval_EvalCodeEx
+
+PyObject *
+PyEval_EvalCodeEx(PyCodeObject *co, PyObject *globals, PyObject *locals,
+           PyObject **args, int argcount, PyObject **kws, int kwcount,
+           PyObject **defs, int defcount, PyObject *closure)
+{
+    register PyFrameObject *f;
+    ...
+    retval = PyEval_EvalFrameEx(f,0);
+    ...
+    return retval;
+}
+</code></pre>
+
+<h3 id="frameobject">FrameObject</h3>
+
+<p><code class="language-plaintext highlighter-rouge">PyFrameObject</code> 定义在 <code class="language-plaintext highlighter-rouge">include/frameobject.h</code> 中</p>
+
+<pre><code class="language-C">typedef struct _frame {
+    PyObject_VAR_HEAD
+    struct _frame *f_back;	/* previous frame, or NULL */
+    PyCodeObject *f_code;	/* code segment */
+    PyObject *f_builtins;	/* builtin symbol table (PyDictObject) */
+    PyObject *f_globals;	/* global symbol table (PyDictObject) */
+    PyObject *f_locals;		/* local symbol table (any mapping) */
+    PyObject **f_valuestack;	/* points after the last local */
+    /* Next free slot in f_valuestack.  Frame creation sets to f_valuestack.
+       Frame evaluation usually NULLs it, but a frame that yields sets it
+       to the current stack top. */
+    PyObject **f_stacktop;
+    PyObject *f_trace;		/* Trace function */
+
+    /* If an exception is raised in this frame, the next three are used to
+     * record the exception info (if any) originally in the thread state.  See
+     * comments before set_exc_info() -- it's not obvious.
+     * Invariant:  if _type is NULL, then so are _value and _traceback.
+     * Desired invariant:  all three are NULL, or all three are non-NULL.  That
+     * one isn't currently true, but "should be".
+     */
+    PyObject *f_exc_type, *f_exc_value, *f_exc_traceback;
+
+    PyThreadState *f_tstate;
+    int f_lasti;		/* Last instruction if called */
+    /* Call PyFrame_GetLineNumber() instead of reading this field
+       directly.  As of 2.3 f_lineno is only valid when tracing is
+       active (i.e. when f_trace is set).  At other times we use
+       PyCode_Addr2Line to calculate the line from the current
+       bytecode index. */
+    int f_lineno;		/* Current line number */
+    int f_iblock;		/* index in f_blockstack */
+    PyTryBlock f_blockstack[CO_MAXBLOCKS]; /* for try and loop blocks */
+    PyObject *f_localsplus[1];	/* locals+stack, dynamically sized */
+} PyFrameObject;
+</code></pre>
+
+<p>可以看到 <code class="language-plaintext highlighter-rouge">FrameObject</code> 中存储了对应的字节码，local、global、builtin 三种变量，以及数据栈等运行时必须的信息。</p>
+
+<p><code class="language-plaintext highlighter-rouge">PyTryBlock</code> 中用来处理 Try 和 Loop（循环） 语句。在 <code class="language-plaintext highlighter-rouge">break</code> <code class="language-plaintext highlighter-rouge">continue</code> <code class="language-plaintext highlighter-rouge">return</code> 等时候可以跳转到 <code class="language-plaintext highlighter-rouge">b_handler</code> 记录的位置继续执行。</p>
+
+<pre><code class="language-C">typedef struct {
+    int b_type;			/* what kind of block this is */
+    int b_handler;		/* where to jump to find handler */
+    int b_level;		/* value stack level to pop to */
+} PyTryBlock;
+</code></pre>
+
+<h3 id="pyeval_evalframeex">PyEval_EvalFrameEx</h3>
+
+<p><code class="language-plaintext highlighter-rouge">PyEval_EvalFrameEx</code> 是 CPython 解释器最主要的求值函数，核心是一个循环里的巨大的 switch case，对不同的 opcode 执行不同的操作。</p>
+
+<p>下面摘抄部分 <code class="language-plaintext highlighter-rouge">PyEval_EvalFrameEx</code> 代码，忽略 <code class="language-plaintext highlighter-rouge">profile</code> 和 <code class="language-plaintext highlighter-rouge">debug</code> 相关功能的代码。</p>
+
+<p>可以看到在 <code class="language-plaintext highlighter-rouge">PyEval_EvalFrameEx</code> 的 for 循环中，先判断了锁的状态，确保同一时间只有一个线程访问解释器，然后通过 <code class="language-plaintext highlighter-rouge">NEXTOP</code> 等宏操作 <code class="language-plaintext highlighter-rouge">next_instr</code> 指针，以执行不同的字节码。</p>
+
+<pre><code class="language-C">// Python/ceval.c PyEval_EvalFrameEx
+
+PyObject *
+PyEval_EvalFrameEx(PyFrameObject *f, int throwflag)
+{
+    ...
+    register PyObject **stack_pointer;  /* Next free slot in value stack */
+    register unsigned char *next_instr;
+    register int opcode;        /* Current opcode */
+    register int oparg;         /* Current opcode argument, if any */
+    register enum why_code why; /* Reason for block stack unwind */
+    register int err;           /* Error status -- nonzero if error */
+    register PyObject *x;       /* Result object -- NULL if error */
+    register PyObject *v;       /* Temporary objects popped off stack */
+    register PyObject *w;
+    register PyObject *u;
+    register PyObject *t;
+    register PyObject *stream = NULL;    /* for PRINT opcodes */
+    register PyObject **fastlocals, **freevars;
+    PyObject *retval = NULL;            /* Return value */
+    PyThreadState *tstate = PyThreadState_GET();
+    PyCodeObject *co;
+
+    unsigned char *first_instr;
+    PyObject *names;
+    PyObject *consts;
+    ...
+    /* Start of code */
+
+    if (f == NULL)
+        return NULL;
+
+    /* push frame */
+    if (Py_EnterRecursiveCall(""))
+        return NULL;
+
+    tstate-&gt;frame = f;
+    ...
+    co = f-&gt;f_code;
+    names = co-&gt;co_names;
+    consts = co-&gt;co_consts;
+    fastlocals = f-&gt;f_localsplus;
+    freevars = f-&gt;f_localsplus + co-&gt;co_nlocals;
+    first_instr = (unsigned char*) PyString_AS_STRING(co-&gt;co_code);
+    next_instr = first_instr + f-&gt;f_lasti + 1;
+    stack_pointer = f-&gt;f_stacktop;
+    assert(stack_pointer != NULL);
+    f-&gt;f_stacktop = NULL;       /* remains NULL unless yield suspends frame */
+    ...
+    why = WHY_NOT;
+    err = 0;
+    x = Py_None;        /* Not a reference, just anything non-NULL */
+    w = NULL;
+
+    for (;;) {
+        ...
+            if (interpreter_lock) {
+                /* Give another thread a chance */
+
+                if (PyThreadState_Swap(NULL) != tstate)
+                    Py_FatalError("ceval: tstate mix-up");
+                PyThread_release_lock(interpreter_lock);
+
+                /* Other threads may run now */
+
+                PyThread_acquire_lock(interpreter_lock, 1);
+
+                if (PyThreadState_Swap(tstate) != NULL)
+                    Py_FatalError("ceval: orphan tstate");
+
+                /* Check for thread interrupts */
+
+                if (tstate-&gt;async_exc != NULL) {
+                    x = tstate-&gt;async_exc;
+                    tstate-&gt;async_exc = NULL;
+                    PyErr_SetNone(x);
+                    Py_DECREF(x);
+                    why = WHY_EXCEPTION;
+                    goto on_error;
+                }
+            }
+        ...
+         /* Extract opcode and argument */
+
+        opcode = NEXTOP();
+        oparg = 0;   /* allows oparg to be stored in a register because
+            it doesn't have to be remembered across a full loop */
+        if (HAS_ARG(opcode))
+            oparg = NEXTARG();
+    dispatch_opcode:
+        /* Main switch on opcode */
+
+        switch (opcode) {
+
+        /* BEWARE!
+           It is essential that any operation that fails sets either
+           x to NULL, err to nonzero, or why to anything but WHY_NOT,
+           and that no operation that succeeds does this! */
+
+        /* case STOP_CODE: this is an error! */
+
+        TARGET_NOARG(NOP)
+        {
+            FAST_DISPATCH();
+        }
+
+        TARGET(LOAD_FAST)
+        {
+            x = GETLOCAL(oparg);
+            if (x != NULL) {
+                Py_INCREF(x);
+                PUSH(x);
+                FAST_DISPATCH();
+            }
+            format_exc_check_arg(PyExc_UnboundLocalError,
+                UNBOUNDLOCAL_ERROR_MSG,
+                PyTuple_GetItem(co-&gt;co_varnames, oparg));
+            break;
+        }
+        ... // 省略剩余 opcode 对应的 case
+    }/* switch */
+
+        /* End the loop if we still have an error (or return) */
+
+        if (why != WHY_NOT)
+            break;
+
+    } /* main loop */
+
+    assert(why != WHY_YIELD);
+    /* Pop remaining stack entries. */
+    while (!EMPTY()) {
+        v = POP();
+        Py_XDECREF(v);
+    }
+
+    if (why != WHY_RETURN)
+        retval = NULL;
+
+    return retval;
+}
+</code></pre>
+
+<p>其中 <code class="language-plaintext highlighter-rouge">why</code> 变量是一个表示 main loop 状态的枚举值。</p>
+
+<pre><code class="language-C">/* Status code for main loop (reason for stack unwind) */
+enum why_code {
+        WHY_NOT =       0x0001, /* No error */
+        WHY_EXCEPTION = 0x0002, /* Exception occurred */
+        WHY_RERAISE =   0x0004, /* Exception re-raised by 'finally' */
+        WHY_RETURN =    0x0008, /* 'return' statement */
+        WHY_BREAK =     0x0010, /* 'break' statement */
+        WHY_CONTINUE =  0x0020, /* 'continue' statement */
+        WHY_YIELD =     0x0040  /* 'yield' operator */
+};
+</code></pre>
+
+<p>其中 <code class="language-plaintext highlighter-rouge">PUSH</code> <code class="language-plaintext highlighter-rouge">POP</code> 都是对 stack_pointer 操作的宏，stack_pointer 指向 FrameObject 中的运行时栈，初始化时指向栈顶。</p>
+
+<p><code class="language-plaintext highlighter-rouge">stack_pointer = f-&gt;f_stacktop;</code></p>
+
+<p><code class="language-plaintext highlighter-rouge">NEXTOP</code> 以及 <code class="language-plaintext highlighter-rouge">JUMPTO</code> 都是对 <code class="language-plaintext highlighter-rouge">next_instr</code> 进行操作的宏，如</p>
+
+<p><code class="language-plaintext highlighter-rouge">#define NEXTOP()        (*next_instr++)</code></p>
+
+<p>控制下一个执行的 opcode</p>
+
+<p>而 <code class="language-plaintext highlighter-rouge">#define NEXTARG()       (next_instr += 2, (next_instr[-1]&lt;&lt;8) + next_instr[-2])</code> 是从 opcode 中提出参数。</p>
+
+<p>可以看出， CPython 虚拟机是基于栈、支持多线程和协程(yield)，并且支持异常处理，和许多语言特性。</p>
+
+  </article>
+
+</div>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function () {
+        var s = document.createElement('script'); s.async = true;
+        s.type = 'text/javascript';
+        s.src = '//' + disqus_shortname + '.disqus.com/count.js';
+        (document.getElementsByTagName('HEAD')[0] || document.getElementsByTagName('BODY')[0]).appendChild(s);
+    }());
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/raphael/2.1.0/raphael-min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+<script src="https://flowchart.js.org/flowchart-latest.js"></script>
+<script src="/js/highlight.min.js"></script>
+<script src="/js/toc.js"></script>
+<script src="/js/qrcode.min.js"></script>
+<script>
+if (!String.prototype.format) {
+    String.prototype.format = function() {
+        var args = arguments;
+        return this.replace(/{(\d+)}/g, function(match, number) { 
+            return typeof args[number] != 'undefined'
+                ? args[number]
+                : match
+            ;
+        });
+    };
+}
+
+$('pre code').each(function(i, block) {
+    hljs.highlightBlock(block);
+});
+
+$('.language-flow').each(function(i, block) {
+    console.log(block);
+    code = $(this).text();
+    diagram = flowchart.parse(code);
+    canvas_id = 'flow'+ i;
+    console.log(canvas_id);
+    temp = "<div id='{0}'> </div>".format(canvas_id);
+    console.log(temp);
+    $(this).html(temp);
+    diagram.drawSVG(canvas_id, {
+        'x': 0,
+        'y': 0,
+        'line-width': 3,
+        'line-length': 50,
+        'text-margin': 10,
+        'font-size': 14,
+    });	
+});
+
+$('#toc').toc({
+    noBackToTopLinks: true,
+    listType: 'ul',
+    title: 'TOC',
+});
+
+var url = location.href;
+console.log(url);
+var qrcode = new QRCode("qrcode", {
+    text: url,
+    width: 128,
+    height: 128,
+    colorDark : "#000000",
+    colorLight : "#ffffff",
+    correctLevel : QRCode.CorrectLevel.H
+});
+
+$(document).ready(function () {
+    $('#show_qrcode').on('mouseenter', function () {
+        $('#qrcode').show();
+        $(this).css({
+            "text-decoration": "underline"
+        });
+    }).on('mouseleave', function () {
+        $('#qrcode').hide();
+        $(this).css({
+            "text-decoration": ''
+        });
+    });;
+});
+</script>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col  footer-col-1">
+        <ul class="contact-list">
+	  <li>
+          <li><a href="mailto:mithrilwoodrat@gmail.com">mithrilwoodrat@gmail.com</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col  footer-col-2">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/Mithrilwoodrat">
+              <span class="icon  icon--github">
+                <svg viewBox="0 0 16 16">
+                  <path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/>
+                </svg>
+              </span>
+              <span class="username">Mithrilwoodrat</span> 
+            </a>
+          </li>
+          
+        </ul>
+      </div>
+  </div>
+</footer>
+
+<script>
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-66599686-1', 'auto');
+  ga('send', 'pageview');
+
+</script>
+</body>
+</html>

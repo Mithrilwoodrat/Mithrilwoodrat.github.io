@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>
+    数据分析的七种武器-sql
+    </title>
+  <link type="application/atom+xml" rel="alternate" href="/feed.xml" title="虚实" />
+  
+  <style>
+  table{
+    border-left:1px solid #000000;border-top:1px solid #000000;
+    width: 100%;
+    word-wrap:break-word; word-break:break-all;
+  }
+  table th{
+  text-align:center;
+  }
+  table th,td{
+    border-right:1px solid #000000;border-bottom:1px solid #000000;
+  }
+  </style>
+
+  <meta name="description" content="前言">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/toc.css">
+  <link rel="canonical" href="/2018/10/09/seven-weapons-of-data-analysis-sql/">
+  <link rel="alternate" type="application/rss+xml" title="虚实" href="/feed.xml" />
+  <link rel="stylesheet" href="/css/highlight.min.css">
+  <link href="//cdn.staticfile.org/font-awesome/3.2.1/css/font-awesome.min.css" rel="stylesheet"media="all">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+    <div>
+      <a class="site-title" href="/">虚实</a>
+      <div class="site-pages">
+		<a class="site-page" href="/archive/">归档</a>
+		<a class="site-page" href="/categories/">分类</a>
+		<a class="site-page" href="/about/">关于</a>
+		<a class="site-page" href="/friend-links/">友情链接</a>
+        <a class="site-page" href="/recommends/">推荐</a>
+      </div>
+      <p class="site-sub-title">记录下折腾和学习的过程</p>
+    </div>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <div class="post">
+
+  <header class="post-header">
+    <h1 class="post-title">数据分析的七种武器-sql</h1>
+    <p class="post-meta">Oct 9, 2018 • admin</p>
+
+	<p class="post-meta"> categories :   <a href="/categories/#数据分析"> 数据分析 </a>  </p>
+    <div id="show_qrcode">
+        <a>扫描二维码</a>
+        <div id="qrcode" style="display:none;position:absolute;z-index:1"></div>
+    </div>
+  </header>
+  <div class="nav">
+      <div id="toc" class="toc"></div>
+  </div>
+  <article class="post-content">
+    <h2 id="前言">前言</h2>
+
+<p>除了<a href="/2018/09/10/seven-weapons-of-data-analysis-shell/">上一篇</a>中提到的使用 Shell 处理日志等文本数据，我们在日常工作中更多时候需要处理各种结构化数据。</p>
+
+<p>存储结构化数据的组件通常而言是关系型数据库，各种各样的业务数据和统计数据通常都会存放到关系型数据库中。</p>
+
+<p>SQL 语言作为和关系型数据库交互的语言，是每个后端程序员或者数据分析人员必备的技能。</p>
+
+<p>并且，除了传统关系型数据库(MySQL, PostgreSQL)，或者嵌入型数据库(SQLite)等常规意义上的数据库可以使用 SQL 外。例如 ElasticSearch、Druid、Flink 等组件也可以通过 SQL 来交互(参考<a href="https://github.com/NLPchina/elasticsearch-sql">elasticsearch-sql</a>、 <a href="http://druid.io/docs/latest/querying/sql">Druid 文档</a>、<a href="https://ci.apache.org/projects/flink/flink-docs-stable/dev/table/sql.html">Flink文档</a>)，HIVE 和 Spark SQL 也同样使用 SQL 作为其交互的语言，像 Python 中 Pandas 等数据处理框架也同样支持 SQL 语法。</p>
+
+<p>数据库所支持的 SQL 为所谓的 ansi SQL (MySQL 所支持的和 ansi 有少量区别，参考<a href="https://dev.mysql.com/doc/refman/8.0/en/extensions-to-ansi.html">文档</a>)，而后面举例的一些列组件中所支持的 “SQL” 为借鉴了最初 SQL 的设计理念，针对特定的查询场景所定制的实现。</p>
+
+<p>大部分场景下，我们使用数据库，编写 SQL 就能完成任务。在其他的一些情况下，我们同样可以根据之前编写 SQL 的经验来学习新的组件。所以可以说 SQL 是一名数据分析人员必备的技能。</p>
+
+<p>而在关系型数据库中，使用最多的为 MySQL 。接下来我们以公开数据集为例，总结一下 MySQL 在做数据分析时常用的一些方法和需要注意的地方。</p>
+
+<h2 id="准备">准备</h2>
+
+<p>我们基于 MySQL 5.6 版本，以及 MySQL 官方公开的 <a href="https://dev.mysql.com/doc/employee/en/employees-installation.html">employees 数据集</a>，来进行接下来的探索。</p>
+
+<p>首先需要安装 MySQL 5.6， Ubuntu 用户参考 <a href="https://gist.github.com/Voronenko/31161ab292c7967fcd38c092335a99e1">https://gist.github.com/Voronenko/31161ab292c7967fcd38c092335a99e1</a>，
+mac 用户参考<a href="https://github.com/Mithrilwoodrat/dev-on-mac#setup-mysql">dev-on-mac#setup-mysql</a>。</p>
+
+<p>在成功安装 MySql 后，需要启动 mysqld 服务，然后从 <a href="https://github.com/datacharmer/test_db">https://github.com/datacharmer/test_db</a> 上 clone 我们要用到的数据集。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>git clone https://github.com/datacharmer/test_db
+cd test_db
+mysql -uroot &lt; employees.sql
+</code></pre></div></div>
+
+<h2 id="浏览数据">浏览数据</h2>
+
+<p>首先打开 mysql client，连接上 mysql server： <code class="language-plaintext highlighter-rouge">mysql -uroot</code></p>
+
+<h3 id="查看数据库">查看数据库</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mysql&gt; show databases;
++--------------------+
+| Database           |
++--------------------+
+| information_schema |
+| employees          |
+| mysql              |
+| performance_schema |
+| test               |
++--------------------+
+5 rows in set (0.02 sec)
+</code></pre></div></div>
+
+<h3 id="选择数据库">选择数据库</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mysql&gt; use employees
+</code></pre></div></div>
+
+<h3 id="列出所有表">列出所有表</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mysql&gt; show tables;
++----------------------+
+| Tables_in_employees  |
++----------------------+
+| current_dept_emp     |
+| departments          |
+| dept_emp             |
+| dept_emp_latest_date |
+| dept_manager         |
+| employees            |
+| salaries             |
+| titles               |
++----------------------+
+8 rows in set (0.00 sec)
+</code></pre></div></div>
+
+<h3 id="查看表定义">查看表定义</h3>
+
+<p>使用 <code class="language-plaintext highlighter-rouge">\G</code> 在 SQL 语句结尾，可以改变结果展示的样式。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mysql&gt; show create table employees\G
+*************************** 1. row ***************************
+       Table: employees
+Create Table: CREATE TABLE `employees` (
+  `emp_no` int(11) NOT NULL,
+  `birth_date` date NOT NULL,
+  `first_name` varchar(14) NOT NULL,
+  `last_name` varchar(16) NOT NULL,
+  `gender` enum('M','F') NOT NULL,
+  `hire_date` date NOT NULL,
+  PRIMARY KEY (`emp_no`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8
+1 row in set (0.00 sec)
+</code></pre></div></div>
+
+<h3 id="浏览表中部分数据">浏览表中部分数据</h3>
+
+<p>接下来我们参考一下 employees 表和 salaries 表中的数据。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mysql&gt; select * from employees limit 10;
++--------+------------+------------+-----------+--------+------------+
+| emp_no | birth_date | first_name | last_name | gender | hire_date  |
++--------+------------+------------+-----------+--------+------------+
+|  10001 | 1953-09-02 | Georgi     | Facello   | M      | 1986-06-26 |
+|  10002 | 1964-06-02 | Bezalel    | Simmel    | F      | 1985-11-21 |
+|  10003 | 1959-12-03 | Parto      | Bamford   | M      | 1986-08-28 |
+|  10004 | 1954-05-01 | Chirstian  | Koblick   | M      | 1986-12-01 |
+|  10005 | 1955-01-21 | Kyoichi    | Maliniak  | M      | 1989-09-12 |
+|  10006 | 1953-04-20 | Anneke     | Preusig   | F      | 1989-06-02 |
+|  10007 | 1957-05-23 | Tzvetan    | Zielinski | F      | 1989-02-10 |
+|  10008 | 1958-02-19 | Saniya     | Kalloufi  | M      | 1994-09-15 |
+|  10009 | 1952-04-19 | Sumant     | Peac      | F      | 1985-02-18 |
+|  10010 | 1963-06-01 | Duangkaew  | Piveteau  | F      | 1989-08-24 |
++--------+------------+------------+-----------+--------+------------+
+10 rows in set (0.01 sec)
+</code></pre></div></div>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mysql&gt; select * from salaries limit 10;
++--------+--------+------------+------------+
+| emp_no | salary | from_date  | to_date    |
++--------+--------+------------+------------+
+|  10001 |  60117 | 1986-06-26 | 1987-06-26 |
+|  10001 |  62102 | 1987-06-26 | 1988-06-25 |
+|  10001 |  66074 | 1988-06-25 | 1989-06-25 |
+|  10001 |  66596 | 1989-06-25 | 1990-06-25 |
+|  10001 |  66961 | 1990-06-25 | 1991-06-25 |
+|  10001 |  71046 | 1991-06-25 | 1992-06-24 |
+|  10001 |  74333 | 1992-06-24 | 1993-06-24 |
+|  10001 |  75286 | 1993-06-24 | 1994-06-24 |
+|  10001 |  75994 | 1994-06-24 | 1995-06-24 |
+|  10001 |  76884 | 1995-06-24 | 1996-06-23 |
++--------+--------+------------+------------+
+10 rows in set (0.00 sec)
+</code></pre></div></div>
+
+<h2 id="查询">查询</h2>
+
+<h3 id="查看薪水表中最近记录中的十个时间">查看薪水表中最近记录中的十个时间</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mysql&gt; select from_date from salaries group by from_date order by from_date desc limit 10;
++------------+
+| from_date  |
++------------+
+| 2002-08-01 |
+| 2002-07-31 |
+| 2002-07-30 |
+| 2002-07-29 |
+| 2002-07-28 |
+| 2002-07-27 |
+| 2002-07-26 |
+| 2002-07-25 |
+| 2002-07-24 |
+| 2002-07-23 |
++------------+
+10 rows in set (1.37 sec)
+</code></pre></div></div>
+
+<h3 id="查看最近的时间段的薪水排行">查看最近的时间段的薪水排行</h3>
+
+<p>通过上面的查询，我们可以看到数据库中 salaries 表的最新年份为 2002 年，我们可以查看一下 2002 年最高的 10 个薪水数据。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mysql&gt; select * from salaries where YEAR(from_date) &gt;= 2002 order by salary desc limit 10;
++--------+--------+------------+------------+
+| emp_no | salary | from_date  | to_date    |
++--------+--------+------------+------------+
+|  43624 | 158220 | 2002-03-22 | 9999-01-01 |
+|  47978 | 155709 | 2002-07-14 | 9999-01-01 |
+| 253939 | 155513 | 2002-04-11 | 9999-01-01 |
+| 109334 | 155190 | 2002-02-11 | 9999-01-01 |
+|  80823 | 154459 | 2002-02-22 | 9999-01-01 |
+| 493158 | 154376 | 2002-05-05 | 9999-01-01 |
+| 237542 | 152687 | 2002-04-08 | 9999-01-01 |
+| 279776 | 150740 | 2002-06-06 | 9999-01-01 |
+|  46439 | 150345 | 2002-05-15 | 9999-01-01 |
+|  66793 | 150052 | 2002-06-16 | 9999-01-01 |
++--------+--------+------------+------------+
+10 rows in set (0.83 sec)
+</code></pre></div></div>
+
+<p>上面用到了 <code class="language-plaintext highlighter-rouge">YEAR()</code> 函数，在编写 SQL 语句的过程中，我们会经常和 MySQL 的 Datetime 和 Date 两种时间相关的数据类型打交道，需要常常翻阅 MySQL 的文档–<a href="https://dev.mysql.com/doc/refman/5.6/en/date-and-time-functions.html">Date and Time Functions</a>。</p>
+
+<p>如上面的 YEAR() 函数会返回 date 类型中年份的数据，和 2002 比较即可筛选出 2002 年的数据。</p>
+
+<h3 id="查看2002年薪水最多的5位员工">查看2002年薪水最多的5位员工</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mysql&gt; select * FROM (select * from salaries where YEAR(from_date) &gt;= 2002 order by salary desc limit 5) AS A left join employees AS B on A.emp_no = B.emp_no\G
+*************************** 1. row ***************************
+    emp_no: 43624
+    salary: 158220
+ from_date: 2002-03-22
+   to_date: 9999-01-01
+    emp_no: 43624
+birth_date: 1953-11-14
+first_name: Tokuyasu
+ last_name: Pesch
+    gender: M
+ hire_date: 1985-03-26
+*************************** 2. row ***************************
+    emp_no: 47978
+    salary: 155709
+ from_date: 2002-07-14
+   to_date: 9999-01-01
+    emp_no: 47978
+birth_date: 1956-03-24
+first_name: Xiahua
+ last_name: Whitcomb
+    gender: M
+ hire_date: 1985-07-18
+*************************** 3. row ***************************
+    emp_no: 253939
+    salary: 155513
+ from_date: 2002-04-11
+   to_date: 9999-01-01
+    emp_no: 253939
+birth_date: 1957-12-03
+first_name: Sanjai
+ last_name: Luders
+    gender: M
+ hire_date: 1987-04-15
+*************************** 4. row ***************************
+    emp_no: 109334
+    salary: 155190
+ from_date: 2002-02-11
+   to_date: 9999-01-01
+    emp_no: 109334
+birth_date: 1955-08-02
+first_name: Tsutomu
+ last_name: Alameldin
+    gender: M
+ hire_date: 1985-02-15
+*************************** 5. row ***************************
+    emp_no: 80823
+    salary: 154459
+ from_date: 2002-02-22
+   to_date: 9999-01-01
+    emp_no: 80823
+birth_date: 1963-01-21
+first_name: Willard
+ last_name: Baca
+    gender: M
+ hire_date: 1985-02-26
+5 rows in set (0.82 sec)
+</code></pre></div></div>
+
+<p>因为我们需要 employees 表中的 first_name 和 last_name 数据，所以我们需要使用 left join 或者 right join，将 salaries 表中 emp_no 与 employees 中 emp_no 相同的行拼接。</p>
+
+<p>关于 SQL join 有一篇通过可视化帮助理解的文章非常值得一读<a href="https://www.codeproject.com/Articles/33052/Visual-Representation-of-SQL-Joins">https://www.codeproject.com/Articles/33052/Visual-Representation-of-SQL-Joins</a></p>
+
+<p><img src="/imgs/sql_join.jpg" alt="join" /></p>
+
+<p>在 “查看2002年薪水最多的5位员工” 的场景下，我们先选择出了 2002 年薪水最多的10条数据，而 employees 表为一个大表。所以我们应该把 employees 放在右边然后使用 left join，避免将 employees 大量无关的 emp_no 选择出来。</p>
+
+<p>使用 EXPLAIN 可以看到不同 join 写法下 mysql 执行的查询操作不尽相同。</p>
+
+<pre><code class="language-SQL">mysql&gt; EXPLAIN select * from employees AS A left join (select * from salaries where YEAR(from_date) &gt;= 2002 order by salary desc limit 10) AS B on A.emp_no = B.emp_no where B.emp_no is not NULL;
++----+-------------+------------+--------+---------------+---------+---------+----------+---------+-----------------------------+
+| id | select_type | table      | type   | possible_keys | key     | key_len | ref      | rows    | Extra                       |
++----+-------------+------------+--------+---------------+---------+---------+----------+---------+-----------------------------+
+|  1 | PRIMARY     | &lt;derived2&gt; | ALL    | NULL          | NULL    | NULL    | NULL     |      10 | Using where                 |
+|  1 | PRIMARY     | A          | eq_ref | PRIMARY       | PRIMARY | 4       | B.emp_no |       1 | NULL                        |
+|  2 | DERIVED     | salaries   | ALL    | NULL          | NULL    | NULL    | NULL     | 2838426 | Using where; Using filesort |
++----+-------------+------------+--------+---------------+---------+---------+----------+---------+-----------------------------+
+3 rows in set (0.01 sec)
+</code></pre>
+
+<pre><code class="language-SQL">mysql&gt; EXPLAIN select * FROM (select * from salaries where YEAR(from_date) &gt;= 2002 order by salary desc limit 10) AS A left join employees AS B on A.emp_no = B.emp_no;
++----+-------------+------------+--------+---------------+---------+---------+----------+---------+-----------------------------+
+| id | select_type | table      | type   | possible_keys | key     | key_len | ref      | rows    | Extra                       |
++----+-------------+------------+--------+---------------+---------+---------+----------+---------+-----------------------------+
+|  1 | PRIMARY     | &lt;derived2&gt; | ALL    | NULL          | NULL    | NULL    | NULL     |      10 | NULL                        |
+|  1 | PRIMARY     | B          | eq_ref | PRIMARY       | PRIMARY | 4       | A.emp_no |       1 | NULL                        |
+|  2 | DERIVED     | salaries   | ALL    | NULL          | NULL    | NULL    | NULL     | 2838426 | Using where; Using filesort |
++----+-------------+------------+--------+---------------+---------+---------+----------+---------+-----------------------------+
+3 rows in set (0.00 sec)
+</code></pre>
+
+<h2 id="统计">统计</h2>
+
+<h3 id="统计2002年各部门雇佣人数排名">统计2002年各部门雇佣人数排名</h3>
+
+<pre><code class="language-SQL">mysql&gt; select * from (select dept_no,count(distinct emp_no) as cnt from dept_emp where YEAR(to_date) &gt;= 2002 group by dept_no order by cnt desc limit 10) B left join departments C on B.dept_no = C.dept_no;
++---------+-------+---------+--------------------+
+| dept_no | cnt   | dept_no | dept_name          |
++---------+-------+---------+--------------------+
+| d005    | 62962 | d005    | Development        |
+| d004    | 54577 | d004    | Production         |
+| d007    | 38653 | d007    | Sales              |
+| d009    | 17982 | d009    | Customer Service   |
+| d008    | 15814 | d008    | Research           |
+| d001    | 15154 | d001    | Marketing          |
+| d006    | 14924 | d006    | Quality Management |
+| d003    | 13209 | d003    | Human Resources    |
+| d002    | 12726 | d002    | Finance            |
++---------+-------+---------+--------------------+
+9 rows in set (0.40 sec)
+</code></pre>
+
+<h3 id="统计2002年各部门的平均薪水">统计2002年各部门的平均薪水</h3>
+
+<pre><code class="language-SQL">SELECT avg(A.salary) as avg_salary, B.dept_no ,C.dept_name FROM
+salaries AS A  LEFT JOIN  dept_emp AS B ON A.emp_no = B.emp_no LEFT JOIN departments as C ON B.dept_no = C.dept_no
+WHERE YEAR(A.from_date) &gt;= 2002
+GROUP BY dept_no ORDER BY avg_salary desc limit 10;
+</code></pre>
+
+<pre><code class="language-SQL">mysql&gt; SELECT avg(A.salary) as avg_salary, B.dept_no ,C.dept_name FROM
+    -&gt; salaries AS A  LEFT JOIN  dept_emp AS B ON A.emp_no = B.emp_no LEFT JOIN departments as C ON B.dept_no = C.dept_no
+    -&gt; WHERE YEAR(A.from_date) &gt;= 2002
+    -&gt; GROUP BY dept_no ORDER BY avg_salary desc limit 10;
++------------+---------+--------------------+
+| avg_salary | dept_no | dept_name          |
++------------+---------+--------------------+
+| 89480.3720 | d007    | Sales              |
+| 80512.3990 | d001    | Marketing          |
+| 79257.8962 | d002    | Finance            |
+| 68792.2218 | d008    | Research           |
+| 68434.1278 | d004    | Production         |
+| 68335.6932 | d005    | Development        |
+| 67657.3375 | d009    | Customer Service   |
+| 66012.1669 | d006    | Quality Management |
+| 64485.9964 | d003    | Human Resources    |
++------------+---------+--------------------+
+9 rows in set (0.98 sec)
+</code></pre>
+
+<p>所有记录中部门的平均薪水状况</p>
+
+<pre><code class="language-SQL">mysql&gt; SELECT avg(A.salary) as avg_salary, B.dept_no ,C.dept_name FROM
+    -&gt; salaries AS A  LEFT JOIN  dept_emp AS B ON A.emp_no = B.emp_no LEFT JOIN departments as C ON B.dept_no = C.dept_no
+    -&gt; GROUP BY dept_no ORDER BY avg_salary desc limit 10;
++------------+---------+--------------------+
+| avg_salary | dept_no | dept_name          |
++------------+---------+--------------------+
+| 80667.6058 | d007    | Sales              |
+| 71913.2000 | d001    | Marketing          |
+| 70489.3649 | d002    | Finance            |
+| 59665.1817 | d008    | Research           |
+| 59605.4825 | d004    | Production         |
+| 59478.9012 | d005    | Development        |
+| 58770.3665 | d009    | Customer Service   |
+| 57251.2719 | d006    | Quality Management |
+| 55574.8794 | d003    | Human Resources    |
++------------+---------+--------------------+
+9 rows in set (6.39 sec)
+</code></pre>
+
+<h2 id="参考阅读">参考阅读</h2>
+
+<p>https://www.kaggle.com/dimarudov/data-analysis-using-sql</p>
+
+<p>https://dev.mysql.com/doc/refman/5.6/en/</p>
+
+
+  </article>
+
+</div>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function () {
+        var s = document.createElement('script'); s.async = true;
+        s.type = 'text/javascript';
+        s.src = '//' + disqus_shortname + '.disqus.com/count.js';
+        (document.getElementsByTagName('HEAD')[0] || document.getElementsByTagName('BODY')[0]).appendChild(s);
+    }());
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/raphael/2.1.0/raphael-min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+<script src="https://flowchart.js.org/flowchart-latest.js"></script>
+<script src="/js/highlight.min.js"></script>
+<script src="/js/toc.js"></script>
+<script src="/js/qrcode.min.js"></script>
+<script>
+if (!String.prototype.format) {
+    String.prototype.format = function() {
+        var args = arguments;
+        return this.replace(/{(\d+)}/g, function(match, number) { 
+            return typeof args[number] != 'undefined'
+                ? args[number]
+                : match
+            ;
+        });
+    };
+}
+
+$('pre code').each(function(i, block) {
+    hljs.highlightBlock(block);
+});
+
+$('.language-flow').each(function(i, block) {
+    console.log(block);
+    code = $(this).text();
+    diagram = flowchart.parse(code);
+    canvas_id = 'flow'+ i;
+    console.log(canvas_id);
+    temp = "<div id='{0}'> </div>".format(canvas_id);
+    console.log(temp);
+    $(this).html(temp);
+    diagram.drawSVG(canvas_id, {
+        'x': 0,
+        'y': 0,
+        'line-width': 3,
+        'line-length': 50,
+        'text-margin': 10,
+        'font-size': 14,
+    });	
+});
+
+$('#toc').toc({
+    noBackToTopLinks: true,
+    listType: 'ul',
+    title: 'TOC',
+});
+
+var url = location.href;
+console.log(url);
+var qrcode = new QRCode("qrcode", {
+    text: url,
+    width: 128,
+    height: 128,
+    colorDark : "#000000",
+    colorLight : "#ffffff",
+    correctLevel : QRCode.CorrectLevel.H
+});
+
+$(document).ready(function () {
+    $('#show_qrcode').on('mouseenter', function () {
+        $('#qrcode').show();
+        $(this).css({
+            "text-decoration": "underline"
+        });
+    }).on('mouseleave', function () {
+        $('#qrcode').hide();
+        $(this).css({
+            "text-decoration": ''
+        });
+    });;
+});
+</script>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col  footer-col-1">
+        <ul class="contact-list">
+	  <li>
+          <li><a href="mailto:mithrilwoodrat@gmail.com">mithrilwoodrat@gmail.com</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col  footer-col-2">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/Mithrilwoodrat">
+              <span class="icon  icon--github">
+                <svg viewBox="0 0 16 16">
+                  <path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/>
+                </svg>
+              </span>
+              <span class="username">Mithrilwoodrat</span> 
+            </a>
+          </li>
+          
+        </ul>
+      </div>
+  </div>
+</footer>
+
+<script>
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-66599686-1', 'auto');
+  ga('send', 'pageview');
+
+</script>
+</body>
+</html>

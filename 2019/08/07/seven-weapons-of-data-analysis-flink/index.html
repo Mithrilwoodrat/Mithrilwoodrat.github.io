@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>
+    数据分析的七种武器-flink
+    </title>
+  <link type="application/atom+xml" rel="alternate" href="/feed.xml" title="虚实" />
+  
+  <style>
+  table{
+    border-left:1px solid #000000;border-top:1px solid #000000;
+    width: 100%;
+    word-wrap:break-word; word-break:break-all;
+  }
+  table th{
+  text-align:center;
+  }
+  table th,td{
+    border-right:1px solid #000000;border-bottom:1px solid #000000;
+  }
+  </style>
+
+  <meta name="description" content="Flink 是一个开源分布式流式处理引擎，支持将数据分发到多个节点，并提供容错机制(fault tolerance)，可以分布式的对流式数据进行处理。">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/toc.css">
+  <link rel="canonical" href="/2019/08/07/seven-weapons-of-data-analysis-flink/">
+  <link rel="alternate" type="application/rss+xml" title="虚实" href="/feed.xml" />
+  <link rel="stylesheet" href="/css/highlight.min.css">
+  <link href="//cdn.staticfile.org/font-awesome/3.2.1/css/font-awesome.min.css" rel="stylesheet"media="all">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+    <div>
+      <a class="site-title" href="/">虚实</a>
+      <div class="site-pages">
+		<a class="site-page" href="/archive/">归档</a>
+		<a class="site-page" href="/categories/">分类</a>
+		<a class="site-page" href="/about/">关于</a>
+		<a class="site-page" href="/friend-links/">友情链接</a>
+        <a class="site-page" href="/recommends/">推荐</a>
+      </div>
+      <p class="site-sub-title">记录下折腾和学习的过程</p>
+    </div>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <div class="post">
+
+  <header class="post-header">
+    <h1 class="post-title">数据分析的七种武器-flink</h1>
+    <p class="post-meta">Aug 7, 2019 • admin</p>
+
+	<p class="post-meta"> categories :   <a href="/categories/#数据分析"> 数据分析 </a>  </p>
+    <div id="show_qrcode">
+        <a>扫描二维码</a>
+        <div id="qrcode" style="display:none;position:absolute;z-index:1"></div>
+    </div>
+  </header>
+  <div class="nav">
+      <div id="toc" class="toc"></div>
+  </div>
+  <article class="post-content">
+    <p>Flink 是一个开源分布式流式处理引擎，支持将数据分发到多个节点，并提供容错机制(fault tolerance)，可以分布式的对流式数据进行处理。</p>
+
+<h2 id="steaming-processing">Steaming Processing</h2>
+
+<p>所谓的流处理是 Steaming Processing 的翻译，相对于基于 Haddop 的批处理(Batch Processing)，流式处理对应的数据是没有开始结束一直产生的实时数据，就像是河里的水一样，所以翻译为流处理。</p>
+
+<p>传统的批处理中，数据需要落地在存储(HDFS等)中，再通过 Hadoop MapReduce、Hive 或者 Spark 等方式进行处理。但是这种模型在一些特定场景不适用，
+例如统计实时的用户行为数据来推荐广告，或者在安全或者业务中需要0延时的对数据进行实时的监控分析并告警，
+以及一些数据分析场景需要将正在发生的事统计出报表用于展示。</p>
+
+<p>流处理的发展由一开始的单机数据库+内存处理，到2000-2010年间的基于<a href="https://en.wikipedia.org/wiki/Complex_event_processing">CEP 模型</a>的商业软件(如<a href="https://www.ibm.com/security/security-intelligence/qradar">IBM qradar</a>, 以及开源的 <a href="https://github.com/espertechinc/esper">esper</a> )等，该阶段的流处理引擎的功能基本和今日类似，但没有解决错误容忍、横向扩容以及模型自定义等问题。</p>
+
+<p>后来开源社区中出现了 Storm 和 Spark Streaming 等框架，后来有了 Flink(三者的对比可以参考medium上的这篇<a href="https://medium.com/@chandanbaranwal/spark-streaming-vs-flink-vs-storm-vs-kafka-streams-vs-samza-choose-your-stream-processing-91ea3f04675b">文章</a>)。</p>
+
+<p>其中 Spark Streaming 使用的是 Micro-batching，即将指定窗口大小的事件缓存，再利用批处理的逻辑去处理。这在实时性要求不那么高的统计等场景下比较适用，但是满足不了安全业务中对时间和事件的准确性要求。</p>
+
+<p>Storm 是早期最流行的流处理框架，但是其不支持聚合、窗口等高级特性，而且也没有简单易用的 api 而是需要自己构建拓扑(2.0 版本支持 SQL)，并且对流事件只能保证 at least once 即至少处理一次(不适应安全告警等场景)。</p>
+
+<p>而 Flink 支持 SQL 并且可以方便的进行 UDF 开发，同时社区自带 CEP 库。</p>
+
+<p>关于 Flink 的开发模型可以参考其<a href="https://ci.apache.org/projects/flink/flink-docs-release-1.8/concepts/programming-model.html">文档</a>。</p>
+
+<p>以下的 Demo 项目代码均在 Github <a href="https://github.com/Mithrilwoodrat/seven-weapons-of-data-analysis/tree/master/flink">seven-weapons-of-data-analysis</a>。</p>
+
+<h2 id="flink">Flink</h2>
+
+<p>根据 Flink <a href="https://ci.apache.org/projects/flink/flink-docs-release-1.7/concepts/programming-model.html">文档</a> 中的描述， 
+Flink 将流式处理做了如下抽下抽象：</p>
+
+<p><img src="/imgs/seven-weapons-of-data-analysis/levels_of_abstraction.svg" alt="" /></p>
+
+<p>最底层是对流事件的状态化处理，在这之上为对有状态的事件通过统一的 API(DataSteam API)进行处理。 Table API 则是对 DataSteam API 进行封装，提供类 SQL 的 DSL ，最上层的 Flink SQL 则是可以脱离 Java、Scala 等语言，直接通过编写 SQL 进行流处理逻辑的开发。</p>
+
+<h2 id="datastream-demo">DataStream Demo</h2>
+
+<p>根据<a href="https://ci.apache.org/projects/flink/flink-docs-release-1.8/tutorials/datastream_api.html">教程</a>，创建 demo project</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ mvn archetype:generate \
+    -DarchetypeGroupId=org.apache.flink \
+    -DarchetypeArtifactId=flink-quickstart-java \
+    -DarchetypeVersion=1.8.0 \
+    -DgroupId=wiki-edits \
+    -DartifactId=wiki-edits \
+    -Dversion=0.1 \
+    -Dpackage=wikiedits \
+    -DinteractiveMode=false
+</code></pre></div></div>
+
+<p>其主要代码如下:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>package wikiedits;
+
+import org.apache.flink.api.common.functions.FoldFunction;
+import org.apache.flink.api.java.functions.KeySelector;
+import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.datastream.KeyedStream;
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.windowing.time.Time;
+import org.apache.flink.streaming.connectors.wikiedits.WikipediaEditEvent;
+import org.apache.flink.streaming.connectors.wikiedits.WikipediaEditsSource;
+
+public class WikipediaAnalysis {
+
+  public static void main(String[] args) throws Exception {
+
+    StreamExecutionEnvironment see = StreamExecutionEnvironment.getExecutionEnvironment();
+
+    DataStream&lt;WikipediaEditEvent&gt; edits = see.addSource(new WikipediaEditsSource());
+
+    KeyedStream&lt;WikipediaEditEvent, String&gt; keyedEdits = edits
+      .keyBy(new KeySelector&lt;WikipediaEditEvent, String&gt;() {
+        @Override
+        public String getKey(WikipediaEditEvent event) {
+          return event.getUser();
+        }
+      });
+
+    DataStream&lt;Tuple2&lt;String, Long&gt;&gt; result = keyedEdits
+      .timeWindow(Time.seconds(5))
+      .fold(new Tuple2&lt;&gt;("", 0L), new FoldFunction&lt;WikipediaEditEvent, Tuple2&lt;String, Long&gt;&gt;() {
+        @Override
+        public Tuple2&lt;String, Long&gt; fold(Tuple2&lt;String, Long&gt; acc, WikipediaEditEvent event) {
+          acc.f0 = event.getUser();
+          acc.f1 += event.getByteDiff();
+          return acc;
+        }
+      });
+
+    result.print();
+
+    see.execute();
+  }
+}
+</code></pre></div></div>
+
+<p>WikipediaEditsSource <a href="https://github.com/apache/flink/blob/release-1.8/flink-contrib/flink-connector-wikiedits/src/main/java/org/apache/flink/streaming/connectors/wikiedits/WikipediaEditsSource.java">代码</a> 中，继承了 flink 的 <code class="language-plaintext highlighter-rouge">RichSourceFunction</code> ，通过 IRC 爬取 wikipedia IRC 频道中的消息，处理为格式化的 Event(WikipediaEditEvent)，推送到 DataStream 中。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>public class WikipediaEditsSource extends RichSourceFunction&lt;WikipediaEditEvent&gt; {
+  ....
+  @Override
+	public void run(SourceContext&lt;WikipediaEditEvent&gt; ctx) throws Exception {
+		try (WikipediaEditEventIrcStream ircStream = new WikipediaEditEventIrcStream(host, port)) {
+			// Open connection and join channel
+			ircStream.connect();
+			ircStream.join(channel);
+
+			try {
+				while (isRunning) {
+					// Query for the next edit event
+					WikipediaEditEvent edit = ircStream.getEdits().poll(100, TimeUnit.MILLISECONDS);
+
+					if (edit != null) {
+						ctx.collect(edit);
+					}
+				}
+			} finally {
+				ircStream.leave(channel);
+			}
+		}
+	}
+}
+</code></pre></div></div>
+
+<p>主要的事件处理逻辑位于 WikipediaAnalysis 的 main 函数中，通过 KeySelector 选择 Event 中的 username 作为 groupby 的 key，KeyedStream。</p>
+
+<p>在 KeyedStream 的基础上，开辟5s一个的时间窗口,并将相同用户的发言字节数相加。</p>
+
+<p>在新的 flink-1.8 中 可以换成下面的写法,类似批处理中的 map reduce 写法可能更容易理解。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>DataStream&lt;WikiUserCount&gt; result = edits
+              .map(new MapFunction&lt;WikipediaEditEvent, WikiUserCount&gt;() {
+                  @Override
+                  public WikiUserCount map(WikipediaEditEvent e) throws Exception {
+                      return new WikiUserCount(e.getUser(), e.getByteDiff());
+                  }
+              })
+              .keyBy("user")
+              .timeWindow(Time.seconds(5))
+              .reduce( new ReduceFunction&lt;WikiUserCount&gt;() {
+                  @Override
+                  public WikiUserCount reduce(WikiUserCount a, WikiUserCount b) {
+                      return new WikiUserCount(a.user, a.count + b.count);
+                  }
+              });
+</code></pre></div></div>
+
+<p>使用下面的命令编译、运行</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mvn clean package
+mvn exec:java -Dexec.mainClass=wikiedits.WikipediaAnalysis
+</code></pre></div></div>
+
+<p>输出的结果如下</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>2&gt; Aaryangupta23 : -7
+4&gt; Wiki13565 : -6
+4&gt; Community Tech bot : 0
+3&gt; Joeykai : 35
+1&gt; EnterpriseyBot : -273
+1&gt; Db135 : -22
+1&gt; DeltaQuadBot : 414
+1&gt; DevGeekStar : 4
+1&gt; Joel David 99 : -111
+1&gt; Taumata994 : 1091
+</code></pre></div></div>
+
+<h2 id="sql-demo">SQL Demo</h2>
+
+<p>根据<a href="https://ci.apache.org/projects/flink/flink-docs-release-1.7/dev/table/common.html">文档</a>，
+Flink SQL 和 Table API 都是将一个 DataSteam 即事件流抽象为 table 的概念，table 中的数据为一个个的事件，就类似数据库中的一条条数据。
+通过 SQL 或者 DSL 对这些数据进行查询和分析。</p>
+
+<p>使用 SQL 处理和上面一样的事件的核心代码如下(完整代码位于 <a href="https://github.com/Mithrilwoodrat/seven-weapons-of-data-analysis/blob/master/flink/sqldemo/src/main/java/sqldemo/FlinkSQLDemo.java">Github seven-weapons-of-data-analysis</a>):</p>
+
+<p>首先需要初始化流处理环境，为了方便调试，可以使用 <code class="language-plaintext highlighter-rouge">LocalEnvironment</code>。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment();
+env.setParallelism(1);
+</code></pre></div></div>
+
+<p>然后需要初始化输入事件源的 Source Datastream，以及注册使用 SQL 需要的 TableEnvironment</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>DataStream&lt;WikipediaEditEvent&gt; edits = env.addSource(new WikipediaEditsSource());
+StreamTableEnvironment tableEnv = TableEnvironment.getTableEnvironment(env);
+</code></pre></div></div>
+
+<p>流式处理中有一个非常重要的数据即为每个事件的事件戳，Flink 需要事件的时间戳来处理基于时间窗口的统计。</p>
+
+<p>Flink 中支持3种不同的时间戳: event time, processing time, and ingestion time。具体的区别可以参考其<a href="https://ci.apache.org/projects/flink/flink-docs-stable/dev/event_timestamps_watermarks.html">文档</a>。</p>
+
+<p>要使用事件时间来做处理，需要在环境中进行设置。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
+</code></pre></div></div>
+
+<p>可以使用 Timestamp assigners 动态地给原来的 DataSteam 中的每个事件附上时间戳，并生成新的 Datasteam。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>DataStream&lt;WikiUserCount&gt; dataset = edits
+        .map(new MapFunction&lt;WikipediaEditEvent, WikiUserCount&gt;() {
+            @Override
+            public WikiUserCount map(WikipediaEditEvent e) throws Exception {
+                return new WikiUserCount(e.getUser(), e.getByteDiff(), e.getTimestamp());
+            }
+        }).assignTimestampsAndWatermarks(extractor);
+</code></pre></div></div>
+
+<p>extractor 简单实现如下，直接返回事件中的 timestamp 字段。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>private final static AscendingTimestampExtractor extractor = new AscendingTimestampExtractor&lt;WikiUserCount&gt;() {
+        @Override
+        public long extractAscendingTimestamp(WikiUserCount element) {
+            return element.timestamp;
+        }
+    };
+</code></pre></div></div>
+
+<p>进行了上面这些准备后，可以将 DataStream 注册为 table，将事件的字段绑定到表的字段上。然后就可以进行 SQL 查询了。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>// Register it so we can use it in SQL
+tableEnv.registerDataStream("sensors", dataset, "user, wordcount, timestamp, proctime.proctime");
+
+String query = "SELECT user, SUM(wordcount) AS total,  TUMBLE_END(proctime, INTERVAL '10' SECOND) FROM sensors GROUP BY TUMBLE(proctime, INTERVAL '10' SECOND), user";
+Table table = tableEnv.sqlQuery(query); // https://flink.sojb.cn/dev/table/sql.html 1.7 中修改为 .sqlQuery
+</code></pre></div></div>
+
+<p>查询的结果为一个新的 table，可以将该 table 转换回 DataSteam 并打印</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>// convert to datastream https://ci.apache.org/projects/flink/flink-docs-release-1.7/dev/table/common.html#integration-with-datastream-and-dataset-api
+
+TupleTypeInfo&lt;Tuple3&lt;String, Integer, Timestamp&gt;&gt; tupleType = new TupleTypeInfo&lt;&gt;(
+        Types.STRING(),
+        Types.INT(),
+        Types.SQL_TIMESTAMP());
+
+DataStream&lt;Tuple3&lt;String, Integer, Timestamp&gt;&gt; dsTuple =
+        tableEnv.toAppendStream(table, tupleType);
+
+dsTuple.print();
+</code></pre></div></div>
+
+<p>SQL 查询会转换为对应的执行计划，即 DAG 和具体的 DataStream 操作参考<a href="https://ci.apache.org/projects/flink/flink-docs-release-1.7/dev/table/common.html#translate-and-execute-a-query">文档</a>，可以使用 <code class="language-plaintext highlighter-rouge">getExecutionPlan</code> 得到执行计划的 json 表示，
+将其提交到 <a href="https://flink.apache.org/visualizer/">flink visualizer 页面</a>上即可查看可视化的执行计划。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>System.out.println(env.getExecutionPlan());
+</code></pre></div></div>
+
+<p>该任务的 plan 如下</p>
+
+<p><img src="/imgs/seven-weapons-of-data-analysis/plan.png" alt="" /></p>
+
+<p>可以看到 plan 生成的结果和 DataSteam Demo 中的逻辑基本一致。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>.keyBy("user")
+.timeWindow(Time.seconds(5))
+.reduce( new ReduceFunction&lt;WikiUserCount&gt;() {
+    @Override
+    public WikiUserCount reduce(WikiUserCount a, WikiUserCount b) {
+        return new WikiUserCount(a.user, a.count + b.count);
+    }
+});
+</code></pre></div></div>
+
+<p>因为查询计划为惰性求值，当调用 execute 时才会被执行。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>//stream.print();
+env.execute("print job");
+</code></pre></div></div>
+
+<p>执行上述程序得到得结果如下:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(DudleyNY,94,2019-08-29 16:12:50.0)
+(BrownHairedGirl,-5,2019-08-29 16:12:50.0)
+(DemonDays64,1,2019-08-29 16:13:00.0)
+(Ravensfire,818,2019-08-29 16:13:00.0)
+(SJM2106,91,2019-08-29 16:13:10.0)
+(TheSLEEVEmonkey,-37554,2019-08-29 16:13:10.0)
+</code></pre></div></div>
+
+<h2 id="集群环境搭建">集群环境搭建</h2>
+
+<p>从 <a href="https://hub.docker.com/_/flink">Dockerhub</a> 拉取最新的 flink 镜像。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>docker pull flink
+</code></pre></div></div>
+
+<p>然后编写 <code class="language-plaintext highlighter-rouge">docker-compose.yml</code> 如下:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>version: "2.1"
+services:
+  jobmanager:
+    image: ${FLINK_DOCKER_IMAGE_NAME:-flink}
+    expose:
+      - "6123"
+    ports:
+      - "8081:8081"
+    command: jobmanager
+    environment:
+      - JOB_MANAGER_RPC_ADDRESS=jobmanager
+
+  taskmanager:
+    image: ${FLINK_DOCKER_IMAGE_NAME:-flink}
+    expose:
+      - "6121"
+      - "6122"
+    depends_on:
+      - jobmanager
+    command: taskmanager
+    links:
+      - "jobmanager:jobmanager"
+    environment:
+      - JOB_MANAGER_RPC_ADDRESS=jobmanager
+</code></pre></div></div>
+
+<p>使用 docker-compose 同时启动 jobmanager 和 taskmanager。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>docker-compose up
+</code></pre></div></div>
+
+<p>服务暴露的端口如下:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>The Web Client is on port 8081
+JobManager RPC port 6123
+TaskManagers RPC port 6122
+TaskManagers Data port 6121
+</code></pre></div></div>
+
+<h2 id="refs">refs</h2>
+
+<p>https://medium.com/@mustafaakin/flink-streaming-sql-example-6076c1bc91c1
+https://gist.github.com/mustafaakin/457859b8bf703c64029071c1139b593d</p>
+
+  </article>
+
+</div>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function () {
+        var s = document.createElement('script'); s.async = true;
+        s.type = 'text/javascript';
+        s.src = '//' + disqus_shortname + '.disqus.com/count.js';
+        (document.getElementsByTagName('HEAD')[0] || document.getElementsByTagName('BODY')[0]).appendChild(s);
+    }());
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/raphael/2.1.0/raphael-min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+<script src="https://flowchart.js.org/flowchart-latest.js"></script>
+<script src="/js/highlight.min.js"></script>
+<script src="/js/toc.js"></script>
+<script src="/js/qrcode.min.js"></script>
+<script>
+if (!String.prototype.format) {
+    String.prototype.format = function() {
+        var args = arguments;
+        return this.replace(/{(\d+)}/g, function(match, number) { 
+            return typeof args[number] != 'undefined'
+                ? args[number]
+                : match
+            ;
+        });
+    };
+}
+
+$('pre code').each(function(i, block) {
+    hljs.highlightBlock(block);
+});
+
+$('.language-flow').each(function(i, block) {
+    console.log(block);
+    code = $(this).text();
+    diagram = flowchart.parse(code);
+    canvas_id = 'flow'+ i;
+    console.log(canvas_id);
+    temp = "<div id='{0}'> </div>".format(canvas_id);
+    console.log(temp);
+    $(this).html(temp);
+    diagram.drawSVG(canvas_id, {
+        'x': 0,
+        'y': 0,
+        'line-width': 3,
+        'line-length': 50,
+        'text-margin': 10,
+        'font-size': 14,
+    });	
+});
+
+$('#toc').toc({
+    noBackToTopLinks: true,
+    listType: 'ul',
+    title: 'TOC',
+});
+
+var url = location.href;
+console.log(url);
+var qrcode = new QRCode("qrcode", {
+    text: url,
+    width: 128,
+    height: 128,
+    colorDark : "#000000",
+    colorLight : "#ffffff",
+    correctLevel : QRCode.CorrectLevel.H
+});
+
+$(document).ready(function () {
+    $('#show_qrcode').on('mouseenter', function () {
+        $('#qrcode').show();
+        $(this).css({
+            "text-decoration": "underline"
+        });
+    }).on('mouseleave', function () {
+        $('#qrcode').hide();
+        $(this).css({
+            "text-decoration": ''
+        });
+    });;
+});
+</script>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col  footer-col-1">
+        <ul class="contact-list">
+	  <li>
+          <li><a href="mailto:mithrilwoodrat@gmail.com">mithrilwoodrat@gmail.com</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col  footer-col-2">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/Mithrilwoodrat">
+              <span class="icon  icon--github">
+                <svg viewBox="0 0 16 16">
+                  <path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/>
+                </svg>
+              </span>
+              <span class="username">Mithrilwoodrat</span> 
+            </a>
+          </li>
+          
+        </ul>
+      </div>
+  </div>
+</footer>
+
+<script>
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-66599686-1', 'auto');
+  ga('send', 'pageview');
+
+</script>
+</body>
+</html>

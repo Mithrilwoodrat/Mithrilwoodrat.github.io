@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>
+    实现一个最简单的-X86_64-crt
+    </title>
+  <link type="application/atom+xml" rel="alternate" href="/feed.xml" title="虚实" />
+  
+  <style>
+  table{
+    border-left:1px solid #000000;border-top:1px solid #000000;
+    width: 100%;
+    word-wrap:break-word; word-break:break-all;
+  }
+  table th{
+  text-align:center;
+  }
+  table th,td{
+    border-right:1px solid #000000;border-bottom:1px solid #000000;
+  }
+  </style>
+
+  <meta name="description" content="之前闲着无聊，参考着《程序员的自我修养》把最后一章的 minicrt 移植到了 64 位环境下。">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/toc.css">
+  <link rel="canonical" href="/2016/10/05/%E5%AE%9E%E7%8E%B0%E4%B8%80%E4%B8%AA%E6%9C%80%E7%AE%80%E5%8D%95%E7%9A%84-X86_64-crt/">
+  <link rel="alternate" type="application/rss+xml" title="虚实" href="/feed.xml" />
+  <link rel="stylesheet" href="/css/highlight.min.css">
+  <link href="//cdn.staticfile.org/font-awesome/3.2.1/css/font-awesome.min.css" rel="stylesheet"media="all">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+    <div>
+      <a class="site-title" href="/">虚实</a>
+      <div class="site-pages">
+		<a class="site-page" href="/archive/">归档</a>
+		<a class="site-page" href="/categories/">分类</a>
+		<a class="site-page" href="/about/">关于</a>
+		<a class="site-page" href="/friend-links/">友情链接</a>
+        <a class="site-page" href="/recommends/">推荐</a>
+      </div>
+      <p class="site-sub-title">记录下折腾和学习的过程</p>
+    </div>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <div class="post">
+
+  <header class="post-header">
+    <h1 class="post-title">实现一个最简单的-X86_64-crt</h1>
+    <p class="post-meta">Oct 5, 2016 • admin</p>
+
+	<p class="post-meta"> categories :   <a href="/categories/#c"> c </a>  </p>
+    <div id="show_qrcode">
+        <a>扫描二维码</a>
+        <div id="qrcode" style="display:none;position:absolute;z-index:1"></div>
+    </div>
+  </header>
+  <div class="nav">
+      <div id="toc" class="toc"></div>
+  </div>
+  <article class="post-content">
+    <p>之前闲着无聊，参考着《程序员的自我修养》把最后一章的 minicrt 移植到了 64 位环境下。</p>
+
+<p>项目地址：<a href="https://github.com/Mithrilwoodrat/toy-crt">https://github.com/Mithrilwoodrat/toy-crt</a></p>
+
+<p>移植到64位下主要存在的问题就是 read write 等 system call 是由 gcc 内联汇编实现的，移植到64位下需要按照64位的格式重写。</p>
+
+<p>64位与32位汇编的区别参考 csapp。具体来说有一下几点:</p>
+
+<ul>
+  <li>使用 syscall 代替 int 0x80</li>
+  <li>system call table 与 32 位下不一致，如 $60 为 exit, $0 为 read， $1为 write</li>
+  <li>64 位下参数传递的方式很多时候直接通过寄存器而非栈</li>
+</ul>
+
+<p>具体64位汇编相关的部分可以参考 <a href="http://0xax.blogspot.com/2014/08/say-hello-to-x64-assembly-part-1.html">Say hello to x64 Assembly</a></p>
+
+<p>还有就是, gcc 内联汇编为 AT&amp;T 格式, 具体使用方法参见 GNU 的<a href="https://gcc.gnu.org/onlinedocs/gcc/Extended-Asm.html">官方文档</a></p>
+
+<p>下面结合代码讲解 c runtime 是做什么的，以及如何实现一个 c runtime。</p>
+
+<p>我们先创建一个最简单的 c 文件如下</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>int main()
+{
+  return 0;
+}
+</code></pre></div></div>
+
+<p>使用 gcc 编译后 <code class="language-plaintext highlighter-rouge">readelf -S a.out</code></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code> 45: 0000000000400530     2 FUNC    GLOBAL DEFAULT   11 __libc_csu_fini
+    46: 0000000000601018     0 NOTYPE  WEAK   DEFAULT   22 data_start
+    47: 0000000000601028     0 NOTYPE  GLOBAL DEFAULT   22 _edata
+    48: 0000000000400534     0 FUNC    GLOBAL DEFAULT   12 _fini
+    49: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND __libc_start_main@@GLIBC_
+    50: 0000000000601018     0 NOTYPE  GLOBAL DEFAULT   22 __data_start
+    51: 0000000000000000     0 NOTYPE  WEAK   DEFAULT  UND __gmon_start__
+    52: 0000000000601020     0 OBJECT  GLOBAL HIDDEN    22 __dso_handle
+    53: 0000000000400540     4 OBJECT  GLOBAL DEFAULT   13 _IO_stdin_used
+    54: 00000000004004c0   101 FUNC    GLOBAL DEFAULT   11 __libc_csu_init
+    55: 0000000000601030     0 NOTYPE  GLOBAL DEFAULT   23 _end
+</code></pre></div></div>
+
+<p>可以看到 gcc 自动加入了好几个函数，这些函数作用如下。</p>
+
+<p>__libc_start_main 调用 __libc_csu_init 来进行初始化工作后 call main， 在 main 返回后调用 __libc_csu_fini 处理收尾工作。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>readelf -s /usr/lib64/crt1.o                                                    
+
+Symbol table '.symtab' contains 19 entries:
+   Num:    Value          Size Type    Bind   Vis      Ndx Name
+     0: 0000000000000000     0 NOTYPE  LOCAL  DEFAULT  UND 
+     1: 0000000000000000     0 SECTION LOCAL  DEFAULT    1 
+     2: 0000000000000000     0 SECTION LOCAL  DEFAULT    2 
+     3: 0000000000000000     0 SECTION LOCAL  DEFAULT    4 
+     4: 0000000000000000     0 SECTION LOCAL  DEFAULT    5 
+     5: 0000000000000000     0 SECTION LOCAL  DEFAULT    7 
+     6: 0000000000000000     0 SECTION LOCAL  DEFAULT    8 
+     7: 0000000000000000     0 SECTION LOCAL  DEFAULT    9 
+     8: 0000000000000000     0 SECTION LOCAL  DEFAULT   10 
+     9: 0000000000000000     0 FILE    LOCAL  DEFAULT  ABS init.c
+    10: 0000000000000000     0 NOTYPE  GLOBAL DEFAULT  UND __libc_csu_fini
+    11: 0000000000000000    43 FUNC    GLOBAL DEFAULT    2 _start
+    12: 0000000000000000     0 NOTYPE  GLOBAL DEFAULT  UND __libc_csu_init
+    13: 0000000000000000     0 NOTYPE  GLOBAL DEFAULT  UND main
+    14: 0000000000000000     0 NOTYPE  WEAK   DEFAULT    7 data_start
+    15: 0000000000000000     0 NOTYPE  GLOBAL DEFAULT  UND _GLOBAL_OFFSET_TABLE_
+    16: 0000000000000000     4 OBJECT  GLOBAL DEFAULT    4 _IO_stdin_used
+    17: 0000000000000000     0 NOTYPE  GLOBAL DEFAULT  UND __libc_start_main
+    18: 0000000000000000     0 NOTYPE  GLOBAL DEFAULT    7 __data_start
+</code></pre></div></div>
+
+<p>这几个函数定义于 /usr/lib64/crt1.o 中。
+glibc 的入口为 _start 由 ld 脚本默认指定，可修改。
+代码在 <code class="language-plaintext highlighter-rouge">glibc/sysdeps/i386/Start.S</code> 中，为平台相关，这里和书上一致摘取部分 i386 下的代码。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    leal __libc_csu_fini@GOTOFF(%ebx), %eax
+    pushl %eax
+    leal __libc_csu_init@GOTOFF(%ebx), %eax
+    pushl %eax
+    pushl %ecx      /* Push second argument: argv.  */
+    pushl %esi      /* Push first argument: argc.  */
+    pushl main@GOT(%ebx)
+    /* Call the user's main function, and exit with its value.
+       But let the libc call main.    */
+    call __libc_start_main@PLT
+</code></pre></div></div>
+
+<p>可以看到 _start 主要工作为将几个函数和 argc argv 的地址传递给 __libc_start_main</p>
+
+<p>__libc_start_main 的函数原型定义在 <code class="language-plaintext highlighter-rouge">glibc\Csu\Libc-start.c</code> 中如下</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>STATIC int LIBC_START_MAIN (int (*main) (int, char **, char **
+                     MAIN_AUXVEC_DECL),
+                int argc,
+                char **argv,
+#ifdef LIBC_START_MAIN_AUXVEC_ARG
+                ElfW(auxv_t) *auxvec,
+#endif
+                __typeof (main) init,   /* main 调用前的初始化 */
+                void (*fini) (void),     /* main 结束后的收尾 */ 
+                void (*rtld_fini) (void),  /* 动态加载有关的收尾工作， rtld aka runtime loader */
+                void *stack_end)  /* 标明栈底地址 */
+     __attribute__ ((noreturn));
+  /* Note: the fini parameter is ignored here for shared library.  It
+   is registered with __cxa_atexit.  This had the disadvantage that
+   finalizers were called in more than one place.  */
+</code></pre></div></div>
+
+<p>注释和之前对 init 和 finit 的说明一致。</p>
+
+<p>在函数最后</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>result = main (argc, argv, __environ MAIN_AUXVEC_PARAM);
+exit(result);
+</code></pre></div></div>
+
+<p>调用了 main，在取得返回值后调用 exit 退出。 exit 处理 atexit 后调用 _exit (exit syscall) 退出。</p>
+
+<p>更多具体的代码就不一一列举了，自己去看 glibc 源码吧 : )</p>
+
+<p>c runtime 的大致功能，结合上面的代码和《程序员的自我修养》 第 4 部分的内容，总结如下：</p>
+
+<ul>
+  <li>初始化全局变量</li>
+  <li>初始化堆</li>
+  <li>初始化 I/O</li>
+  <li>获取 argv 和 env</li>
+  <li>call main 并记录 ret</li>
+  <li>exit(ret)</li>
+</ul>
+
+<p>了解了这些，我们可以试着绕过 glibc 直接用汇编写一个 hello world，看一下没有 glibc 的情况下应该怎么写。</p>
+
+<p>hello.S</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>.data
+hello:
+    .string "Hello World!\n"
+
+.text
+.globl _start
+_start:
+    movq $1, %rax
+    movq $1, %rdi
+    movq $hello, %rsi
+    movq $13, %rdx
+    syscall
+
+    movq $60, %rax
+    movq $0, %rdi
+    syscall
+</code></pre></div></div>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>gcc -c -fno-builtin -nostdlib hello.S -o hello.o 
+# gcc 这里也可以换成 as hello.S -o hello.o ， 为了统一使用 gcc
+ld -static -e _start hello.o -o hello
+# 指定入口为自定义的 _start ，这个入口什么初始化都没做，直接开始执行。
+./hello                                
+Hello World!
+</code></pre></div></div>
+
+<p>ls 可以看到， 最后生成的的 ELF 可执行文件仅 920 字节。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ file hello                              
+hello: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, not stripped
+
+$ ls hello -l                             
+-rwxr-xr-x 1 woodrat users 920 Oct  6 16:59 hello
+</code></pre></div></div>
+
+<p>看了上面这个汇编直接实现的 Hello World，我们要做的事情其实就是在这个的基础上增加一些功能。</p>
+
+<p>hello.S 中的入口为 <code class="language-plaintext highlighter-rouge">_start</code>,什么都没做直接开始执行程序。而 crt 实现的入口函数还需要做上面提到的几个初始化工作，还有就是 crt 需要将汇编实现的 system call 包装成 C 语言函数的形式，在这个基础上一些基本的库函数就可以用纯 C 实现了。</p>
+
+<p>根据上面总结的功能，我们可以开始实现一个最简单的 c runtime 了。既然是最简单的，大部分功能都可以略过，只要最后能运行就成。代码主要参照 《程序员的自我修养》 最后一章的 minicrt。</p>
+
+<p>先写入口函数 crt_entry</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>void crt_entry(void) 
+{
+    int ret;
+    int argc;
+    char** argv;
+    
+    char * rbp_reg = 0;
+    // on 64bit system use rbp instead of ebp
+    //简单来说， gcc 内联汇编其实类似于 web 中的模板，第一个 `:` 后为输出， 第二个 `:` 
+    //后为输入。
+    asm volatile("movq %%rbp, %0 \n":"=m" (rbp_reg)); 
+    argc = *(int *) (rbp_reg + 8);
+    argv = (char **) (rbp_reg + 16);
+
+    
+    if ( !crt_heap_init()){
+        die("heap init failed!");
+    }
+
+    if ( !crt_io_init()) {
+        die("IO init failed!");
+    }
+
+    ret = main(argc, argv);
+    _exit(ret);
+}
+</code></pre></div></div>
+
+<p>这里略过的初始化全局变量和环境变量，仅初始化堆和 I/O， 获取 argc argv 后直接调用 main。
+x86-64下的调用栈参考<a href="http://cons.mit.edu/fa16/x86-64-architecture-guide.html">x86-64-architecture-guide.html</a>，根据这个文档和<code class="language-plaintext highlighter-rouge">glibc/Sysdeps/X86_64/start.S</code>中的注释可以知道 rbp + 8 为 argc，rpb+16 开始为 argv。</p>
+
+<p>这里的 _exit 直接退出不处理 atexit 函数。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>void _exit(int status)
+{
+    __asm__("movq $60, %%rax \n\t"
+            "movq %0, %%rdi \n\t"
+            "syscall \n\t"
+            "hlt \n\t"/* Crash if somehow `exit' does return.	 */
+            :: "g" (status)); /* input */
+}
+</code></pre></div></div>
+
+<p>heap init 主要调用 brk (syscall $12) 申请固定大小内存，以双向链表方式维护，并暴露 malloc、free 接口给用户。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>int crt_heap_init()
+{
+    void *base = NULL;
+    heap_header *header = NULL;
+    // 32 MB heap size
+    size_t heap_size = 1024 * 1024 * 32;
+
+    base = (void*) brk(0);
+    void *end = ADDR_ADD(base, heap_size);
+    end = (void *) brk(end);
+    
+    if (!end) {
+        return 0;
+    }
+    header = (heap_header*) base;
+
+    header-&gt;size = heap_size;
+    header-&gt;type = HEAP_BLOCK_FREE;
+    header-&gt;next = NULL;
+    header-&gt;prev = NULL;
+
+    list_head = header;
+    return 1;
+}
+</code></pre></div></div>
+
+<p>heap init 后 memory map 如下</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>  cat /proc/4680/maps                                                         
+  00400000-00401000 r-xp 00000000 08:01 29099192                           /home/woodrat/Desktop/toy-crt/bin/test
+  00601000-00602000 rw-p 00001000 08:01 29099192                           /home/woodrat/Desktop/toy-crt/bin/test
+  01643000-03643000 rw-p 00000000 00:00 0                                  [heap]
+  7ffcf89ce000-7ffcf89ef000 rw-p 00000000 00:00 0                          [stack]
+  7ffcf89f5000-7ffcf89f7000 r--p 00000000 00:00 0                          [vvar]
+  7ffcf89f7000-7ffcf89f9000 r-xp 00000000 00:00 0                          [vdso]
+  ffffffffff600000-ffffffffff601000 r-xp 00000000 00:00 0                  [vsyscall]
+
+  heap field = 03643000 - 01643000  = 32M
+</code></pre></div></div>
+
+<p>io init 其实什么都没做，主要是在 stdio.c 中，wrap read write open 等 syscall。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>int crt_io_init()
+{
+    return 1;
+}
+</code></pre></div></div>
+
+<p>ps : 我偷懒没有写 open close 等，只实现了 read 和 write。</p>
+
+<p>这些都准备好了以后，加上 stdio 以及 stdlib 中的一些常用函数就可以得到一个最简单的 crt 了。</p>
+
+<p>测试用的 test.c 如下</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>#include "toy_crt.h"
+
+static const char *str = "Hello World!";
+
+void test_puts()
+{
+    puts(str);
+}
+
+void test_iota() 
+{
+    int len = strlen(str);
+    char len_str[10];
+    itoa(len, len_str);
+    puts(len_str);
+}
+
+void test_malloc()
+{
+    int *p_int = (int *) malloc(sizeof(int));
+    *p_int = 10;
+    char len_str[10];
+    itoa(*p_int, len_str);
+    puts(len_str);
+    free(p_int);
+}
+
+int main(int argc,char * argv[])
+{
+    test_puts();
+    test_iota();
+    test_malloc();
+    puts("argc:");
+    putchar(argc + '0');
+    putchar('\n');
+    puts("argv:");
+    int i;
+    for (i = 0; i &lt; argc; i++) {
+	    puts(argv[i]);
+    }
+    getchar();
+    return 42;
+}
+</code></pre></div></div>
+
+<p>输出如下</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>bin/test 1 2 3 4                                                                                             
+Hello World!
+12
+10
+argc:
+5
+argv:
+bin/test
+1
+2
+3
+4
+</code></pre></div></div>
+
+<p>readelf 可以看到，生成的文件里没有 <code class="language-plaintext highlighter-rouge">__libc_start_main</code>, 并且入口地址 <code class="language-plaintext highlighter-rouge">0x40010d</code> 为上面定义的 <code class="language-plaintext highlighter-rouge">crt_entry</code>(<code class="language-plaintext highlighter-rouge">ld -e crt_entry</code> 指定)。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>readelf -h bin/test                    
+ELF Header:
+  Magic:   7f 45 4c 46 02 01 01 00 00 00 00 00 00 00 00 00 
+  Class:                             ELF64
+  Data:                              2's complement, little endian
+  Version:                           1 (current)
+  OS/ABI:                            UNIX - System V
+  ABI Version:                       0
+  Type:                              EXEC (Executable file)
+  Machine:                           Advanced Micro Devices X86-64
+  Version:                           0x1
+  Entry point address:               0x40010d
+  Start of program headers:          64 (bytes into file)
+  Start of section headers:          6400 (bytes into file)
+  Flags:                             0x0
+  Size of this header:               64 (bytes)
+  Size of program headers:           56 (bytes)
+  Number of program headers:         3
+  Size of section headers:           64 (bytes)
+  Number of section headers:         15
+  Section header string table index: 12
+</code></pre></div></div>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>readelf -s bin/test                     
+
+Symbol table '.symtab' contains 42 entries:
+   Num:    Value          Size Type    Bind   Vis      Ndx Name
+     0: 0000000000000000     0 NOTYPE  LOCAL  DEFAULT  UND 
+     1: 00000000004000e8     0 SECTION LOCAL  DEFAULT    1 
+     2: 0000000000400892     0 SECTION LOCAL  DEFAULT    2 
+     3: 00000000004008d0     0 SECTION LOCAL  DEFAULT    3 
+     4: 0000000000601000     0 SECTION LOCAL  DEFAULT    4 
+     5: 0000000000601008     0 SECTION LOCAL  DEFAULT    5 
+     6: 0000000000000000     0 SECTION LOCAL  DEFAULT    6 
+     7: 0000000000000000     0 SECTION LOCAL  DEFAULT    7 
+     8: 0000000000000000     0 SECTION LOCAL  DEFAULT    8 
+     9: 0000000000000000     0 SECTION LOCAL  DEFAULT    9 
+    10: 0000000000000000     0 SECTION LOCAL  DEFAULT   10 
+    11: 0000000000000000     0 SECTION LOCAL  DEFAULT   11 
+    12: 0000000000000000     0 FILE    LOCAL  DEFAULT  ABS entry.c
+    13: 0000000000000000     0 FILE    LOCAL  DEFAULT  ABS test.c
+    14: 0000000000601000     8 OBJECT  LOCAL  DEFAULT    4 str
+    15: 0000000000000000     0 FILE    LOCAL  DEFAULT  ABS stdio.c
+    16: 0000000000000000     0 FILE    LOCAL  DEFAULT  ABS string.c
+    17: 00000000004003d0   127 FUNC    LOCAL  DEFAULT    1 reverse
+    18: 0000000000000000     0 FILE    LOCAL  DEFAULT  ABS stdlib.c
+    19: 00000000004007c1    39 FUNC    LOCAL  DEFAULT    1 brk
+    20: 000000000040033b    38 FUNC    GLOBAL DEFAULT    1 putchar
+    21: 00000000004007e8   170 FUNC    GLOBAL DEFAULT    1 crt_heap_init
+    22: 000000000040010d   113 FUNC    GLOBAL DEFAULT    1 crt_entry
+    23: 0000000000400361    62 FUNC    GLOBAL DEFAULT    1 puts
+    24: 0000000000400670   337 FUNC    GLOBAL DEFAULT    1 malloc
+    25: 000000000040044f   191 FUNC    GLOBAL DEFAULT    1 itoa
+    26: 0000000000601008     8 OBJECT  GLOBAL DEFAULT    5 list_head
+    27: 00000000004002db    48 FUNC    GLOBAL DEFAULT    1 write
+    28: 000000000040030b    48 FUNC    GLOBAL DEFAULT    1 read
+    29: 0000000000400196    22 FUNC    GLOBAL DEFAULT    1 test_puts
+    30: 0000000000601008     0 NOTYPE  GLOBAL DEFAULT    5 __bss_start
+    31: 0000000000400235   155 FUNC    GLOBAL DEFAULT    1 main
+    32: 00000000004002d0    11 FUNC    GLOBAL DEFAULT    1 crt_io_init
+    33: 000000000040039f    49 FUNC    GLOBAL DEFAULT    1 getchar
+    34: 00000000004001e6    79 FUNC    GLOBAL DEFAULT    1 test_malloc
+    35: 00000000004000e8    37 FUNC    GLOBAL DEFAULT    1 die
+    36: 00000000004001ac    58 FUNC    GLOBAL DEFAULT    1 test_iota
+    37: 0000000000601008     0 NOTYPE  GLOBAL DEFAULT    4 _edata
+    38: 0000000000601010     0 NOTYPE  GLOBAL DEFAULT    5 _end
+    39: 000000000040017e    24 FUNC    GLOBAL DEFAULT    1 _exit
+    40: 000000000040050e    57 FUNC    GLOBAL DEFAULT    1 strlen
+    41: 0000000000400547   297 FUNC    GLOBAL DEFAULT    1 free
+</code></pre></div></div>
+
+<p>具体的代码参考最上面给出的 github repo.</p>
+
+  </article>
+
+</div>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function () {
+        var s = document.createElement('script'); s.async = true;
+        s.type = 'text/javascript';
+        s.src = '//' + disqus_shortname + '.disqus.com/count.js';
+        (document.getElementsByTagName('HEAD')[0] || document.getElementsByTagName('BODY')[0]).appendChild(s);
+    }());
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/raphael/2.1.0/raphael-min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+<script src="https://flowchart.js.org/flowchart-latest.js"></script>
+<script src="/js/highlight.min.js"></script>
+<script src="/js/toc.js"></script>
+<script src="/js/qrcode.min.js"></script>
+<script>
+if (!String.prototype.format) {
+    String.prototype.format = function() {
+        var args = arguments;
+        return this.replace(/{(\d+)}/g, function(match, number) { 
+            return typeof args[number] != 'undefined'
+                ? args[number]
+                : match
+            ;
+        });
+    };
+}
+
+$('pre code').each(function(i, block) {
+    hljs.highlightBlock(block);
+});
+
+$('.language-flow').each(function(i, block) {
+    console.log(block);
+    code = $(this).text();
+    diagram = flowchart.parse(code);
+    canvas_id = 'flow'+ i;
+    console.log(canvas_id);
+    temp = "<div id='{0}'> </div>".format(canvas_id);
+    console.log(temp);
+    $(this).html(temp);
+    diagram.drawSVG(canvas_id, {
+        'x': 0,
+        'y': 0,
+        'line-width': 3,
+        'line-length': 50,
+        'text-margin': 10,
+        'font-size': 14,
+    });	
+});
+
+$('#toc').toc({
+    noBackToTopLinks: true,
+    listType: 'ul',
+    title: 'TOC',
+});
+
+var url = location.href;
+console.log(url);
+var qrcode = new QRCode("qrcode", {
+    text: url,
+    width: 128,
+    height: 128,
+    colorDark : "#000000",
+    colorLight : "#ffffff",
+    correctLevel : QRCode.CorrectLevel.H
+});
+
+$(document).ready(function () {
+    $('#show_qrcode').on('mouseenter', function () {
+        $('#qrcode').show();
+        $(this).css({
+            "text-decoration": "underline"
+        });
+    }).on('mouseleave', function () {
+        $('#qrcode').hide();
+        $(this).css({
+            "text-decoration": ''
+        });
+    });;
+});
+</script>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col  footer-col-1">
+        <ul class="contact-list">
+	  <li>
+          <li><a href="mailto:mithrilwoodrat@gmail.com">mithrilwoodrat@gmail.com</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col  footer-col-2">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/Mithrilwoodrat">
+              <span class="icon  icon--github">
+                <svg viewBox="0 0 16 16">
+                  <path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/>
+                </svg>
+              </span>
+              <span class="username">Mithrilwoodrat</span> 
+            </a>
+          </li>
+          
+        </ul>
+      </div>
+  </div>
+</footer>
+
+<script>
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-66599686-1', 'auto');
+  ga('send', 'pageview');
+
+</script>
+</body>
+</html>

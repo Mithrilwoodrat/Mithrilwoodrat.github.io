@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>
+    威胁情报系列（一）：什么是威胁情报
+    </title>
+  <link type="application/atom+xml" rel="alternate" href="/feed.xml" title="虚实" />
+  
+  <style>
+  table{
+    border-left:1px solid #000000;border-top:1px solid #000000;
+    width: 100%;
+    word-wrap:break-word; word-break:break-all;
+  }
+  table th{
+  text-align:center;
+  }
+  table th,td{
+    border-right:1px solid #000000;border-bottom:1px solid #000000;
+  }
+  </style>
+
+  <meta name="description" content="前言">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/toc.css">
+  <link rel="canonical" href="/2020/01/12/what-is-threat-intelligence/">
+  <link rel="alternate" type="application/rss+xml" title="虚实" href="/feed.xml" />
+  <link rel="stylesheet" href="/css/highlight.min.css">
+  <link href="//cdn.staticfile.org/font-awesome/3.2.1/css/font-awesome.min.css" rel="stylesheet"media="all">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+    <div>
+      <a class="site-title" href="/">虚实</a>
+      <div class="site-pages">
+		<a class="site-page" href="/archive/">归档</a>
+		<a class="site-page" href="/categories/">分类</a>
+		<a class="site-page" href="/about/">关于</a>
+		<a class="site-page" href="/friend-links/">友情链接</a>
+        <a class="site-page" href="/recommends/">推荐</a>
+      </div>
+      <p class="site-sub-title">记录下折腾和学习的过程</p>
+    </div>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <div class="post">
+
+  <header class="post-header">
+    <h1 class="post-title">威胁情报系列（一）：什么是威胁情报</h1>
+    <p class="post-meta">Jan 12, 2020 • admin</p>
+
+	<p class="post-meta"> categories :   <a href="/categories/#安全"> 安全 </a>  <a href="/categories/#威胁情报"> 威胁情报 </a>  </p>
+    <div id="show_qrcode">
+        <a>扫描二维码</a>
+        <div id="qrcode" style="display:none;position:absolute;z-index:1"></div>
+    </div>
+  </header>
+  <div class="nav">
+      <div id="toc" class="toc"></div>
+  </div>
+  <article class="post-content">
+    <h2 id="前言">前言</h2>
+
+<p>威胁情报作为最近安全领域一个比较新也比较火热的领域，有其独特的业务和技术价值，从传统终端安全厂商到互联网公司的安全团队等安全从业者在建设威胁情报的过程中，实际上进行了一系列技术革新和对安全对抗本质的重新思考。</p>
+
+<p>笔者 18 到 19 两年间在鹅厂的威胁情报团队参与并负责了部分威胁情报从零到一的建设，在接下来的系列文章中将通过威胁情报“是什么”、“从哪里来”、“怎么用” 三篇文章回顾一下这两年间积累的情报相关的知识(是什么)。并且顺带以业务团队的视角讲诉在这个过程中是怎么从传统样本对抗的思路到以搜索、大数据、知识图谱、实时计算、机器学习算法等技术来实现工程化、自动化和规模化的(从哪里来)，以及在拥有这些基础设施和商业数据后可以实现什么样的业务(怎么用)，再到怎么用这套打法扩展到业务安全等业务。</p>
+
+<h2 id="背景">背景</h2>
+
+<p>在开始正式介绍威胁情报前，想简单的科普一下该技术是怎么在国内突然进入快速发展阶段的。</p>
+
+<p>互联网行业每隔一段时间便会有一个新的风口，处于风口的技术和企业都会以日新月异的速度飞快的发展。而企业安全行业则不同，目前为止在国内的总市场还不大，之前也主要是以绿盟、启明星辰、深信服为代表的传统安全厂商在其中血拼，所以其中的技术迭代速度还没有互联网公司这么快。但是由于大环境影响和时代的发展，PC 桌面时代彻底进入存量竞争期，PC 流量变现越来越困难。这时候，以安全为名实则为互联网公司(参考阅读 <a href="https://blog.csdn.net/XIAO_XIAO_C/article/details/82908529">《互联网三级火箭模式》</a>)的终端霸主 360 亲自入场企业安全领域。而用户量第二大的腾讯电脑管家也因为同样的原因跟进。以 360 和腾讯的体量以及它们拥有的数据、人才、技术储备，进入安全行业后造成了一次新的洗牌，改变了该行业的业务模式也带来了一轮新的技术升级。</p>
+
+<p>还有一个众所周知的原因：即 2017 年 5 月的 <a href="https://en.wikipedia.org/wiki/WannaCry_ransomware_attack">WannaCry 勒索病毒事件</a>。 安全行业除了在少数情况下会被外部进入的资本和新玩家推动加速发展外，更多时候都发展都相对缓慢。但是一旦有影响非常重大信息安全的事件发生时，各行各业的注意力都会在短时间内聚焦在信息安全领域，这时候行业也会快速发展一次。</p>
+
+<p>还记得 17 年 5 月的一个深夜，突然被领导的电话叫醒，一个负责写规则的室友还被叫回了公司应急，后来的事大家都知道了。</p>
+
+<p>Wannacry 的作者使用了 <a href="https://en.wikipedia.org/wiki/The_Shadow_Brokers">Shadow Brokers</a> 泄露的 NSA 攻击工具包中的 EternalBlue 带的 <a href="https://en.wikipedia.org/wiki/EternalBlue">MS-17010 漏洞</a>(利用 smb ，和冲击波一样的可以 rce ，能造成蠕虫式传播的漏洞)，在短时间就感染了全世界范围内各大国家的政府、学校、医院等基础设施，造成了很大的损失以及心理冲击，并且带起了一阵制作勒索、挖矿病毒的风潮。我还记得第二天同学就发来了某高校图书馆和实验室电脑一片红的图片。后来公司也接到了医院的求助，因为勒索病毒造成了他们的设备不能正常使用。</p>
+
+<div align="center">
+  <img src="/imgs/threatintel/Wana_Decrypt0r_screenshot.png" />
+  <p>WannaCry 感染截图</p>
+</div>
+
+<p>然而遗憾的是当时360安全卫士和腾讯电脑管家以及各大传统安全厂商的产品并未完全防御这次勒索病毒传播(很大一个原因是很多终端用户并未及时安装系统更新，其实微软在4月就推出了针对该漏洞的补丁，在这之后一两年都仍然有很多使用 ms-17010 的病毒在传播。只能说教育用户也是安全从业者需要做的工作之一，反过来看这也说明安全行业还有很大的发展空间)。这次事件迫使以 360、腾讯两家 c 端安全霸主、b 端安全的新玩家开始反思自身的安全建设不足之处: 即缺乏发现大盘(国内整体用户)中流行的病毒家族，以及活跃的黑产团伙并与之持续抗衡的手段。随着系统的不断建设和对数据理解的深入，这场建设对外表现为了威胁情报、APT 报告、安全大脑类产品等等各种形式，并促使了云安全产品在内的各类安全产品的技术和理念升级。</p>
+
+<p>好了，闲话不再多说，让我们先从最基本的什么是威胁情报开始，进入威胁情报的世界。</p>
+
+<h2 id="一威胁情报的定义">一、威胁情报的定义</h2>
+
+<p>目前被引用最多的威胁情报的定义是2014年Gartner在其 《安全威胁情报服务市场指南》（Market Guide for Security Threat Intelligence Service）中提出的</p>
+
+<p>“威胁情报是一种基于证据的知识，包括了情境、机制、指标、隐含和实际可行的建议。威胁情报描述了现存的、或者是即将出现针对资产的威胁或危险，并可以用于通知主体针对相关威胁或危险采取某种响应。”</p>
+
+<p>Gartner 的定义中，对情报的信息量提出了明确的要求，在用于检测之外还需要提供复杂的背景信息以及针对管理者的建议等。</p>
+
+<p><strong>通俗的讲，威胁情报是关于威胁的信息，利用公开的资源，用于发现威胁并指导企业行动以改善安全状况。</strong></p>
+
+<p><strong>也可以说是，知道外面有哪些坏人(团伙)，他们都用什么样的技术，目标是谁。以及用什么东西(IOC)可以快速准确的检测有没有被他们攻击</strong></p>
+
+<div align="center">
+  <img src="/imgs/threatintel/1.png" />
+  <p>图 1-1</p>
+</div>
+
+<p>威胁情报也可以理解为从 Unknown Unknowns 到 Known Unkonowns 的一种过程，即通过发现威胁存在的证据，知道威胁的存在。然后通过收集威胁的上下文及背景信息等，对威胁进行理解并缓解其危害程度就能从 Known Unkonowns 转移到 Known Knowns 状态。</p>
+
+<p>英国的国家网络安全中心（NCSC）将威胁情报分为了以下四种：</p>
+
+<ul>
+  <li>
+    <p>战略情报(Strategic Threat Intelligence)</p>
+  </li>
+  <li>
+    <p>可操作情报(Operational Threat Intelligence)</p>
+  </li>
+  <li>
+    <p>战术情报(Tactical Threat Intelligence) (TTPs)</p>
+  </li>
+  <li>
+    <p>技术情报(Technical Threat Intelligence)</p>
+  </li>
+</ul>
+
+<div align="center">
+  <img src="/imgs/threatintel/2.png" />
+  <p>图 1-2</p>
+</div>
+
+<p>接下来我们详细将介绍一下每个种类的威胁情报，并以御见威胁情报中心的使用场景为例方便各位理解。</p>
+
+<h3 id="11-战略情报">1.1 战略情报</h3>
+
+<p>战略级情报为总结型的信息，站在全局的角度，为决策层提供参考。<strong>通常为行业总览、攻击趋势等比较宏观的报告。</strong></p>
+
+<p>例如御见威胁情报中心在 2 月 20 日发布的 <a href="https://s.tencent.com/research/report/654.html">《外贸从业者注意！陌生邮件可能暗藏木马窃取信息》</a> 报告。总结了近期针对外贸行业的攻击，攻击者使用带有宏病毒的 word 文档伪装为正常商务邮件，诱骗外贸行业的工作人员点击，点击后恶意的宏代码会下载“商贸信”病毒。</p>
+
+<h3 id="12-可操作情报">1.2 可操作情报</h3>
+
+<p><strong>可操作情报是针对特定组织即将发生的攻击的情报。</strong>例如一国外黑客组织最近针对国家重点单位的侦查变多，可能最近会发起对该重点单位的攻击。这一类的情报可能更容易被国家级别的情报收集单位收集到，普通的公司和个人很难接触到相关的信息。通过对开源公开情报进行分析和卧底私密的聊天论坛（irc 或 telegram）可能也能得到这一类的情报。</p>
+
+<h3 id="13-战术情报">1.3 战术情报</h3>
+
+<p>战术情报通常指 Tactics, Techniques, and Procedures (TTPs)，<strong>TTPs 是用来描述攻击者如何进行攻击的，即攻击者的方法，工具和策略。提供给甲方安全负责人和应急响应人员用于防御，告警，并在被攻击后的调查中使用。</strong></p>
+
+<p>常见的 TTPS 包括：</p>
+
+<ul>
+  <li>
+    <p>一个木马家族的特征</p>
+  </li>
+  <li>
+    <p>一个特定木马变种的相关信息</p>
+  </li>
+  <li>
+    <p>特定的攻击手法</p>
+  </li>
+  <li>
+    <p>攻击者使用的基础设施信息（例如病毒使用的 c2 ip）</p>
+  </li>
+  <li>
+    <p>攻击的目标信息</p>
+  </li>
+</ul>
+
+<p>等等。</p>
+
+<p>例如攻击者们在做内网渗透时会使用 <a href="https://github.com/gentilkiwi/mimikatz">Minikatz</a> 和魔改过或者混淆过的 Minikatz 来提取凭证（通常为 NTLM）进行爆破或者进行横向移动(<a href="https://www.crowdstrike.com/epp-101/lateral-movement/">Lateral movement</a>)。横向移动中可能会使用 PsExec 或者 WMI 接口进行 <a href="https://en.wikipedia.org/wiki/Pass_the_hash">pass the hass</a> 操作，如果没有本地管理员权限也可能使用 <a href="https://attack.mitre.org/techniques/T1097/">pass the ticket</a> 进行攻击。这种信息即战术情报。</p>
+
+<p>通过配置策略防止域管理员登陆，以及使用SOC的流量探针或者 IDS 设置监控流量中的 PsExec 行为并配置相关的规则对该类行为进行监控。（关于 windows 横向移动攻击可以参考 <a href="https://zhuanlan.zhihu.com/p/34239250">《甲方安全建设之Windows横向移动攻击的检测》</a> 和 <a href="https://3gstudent.github.io/3gstudent.github.io/%E5%9F%9F%E6%B8%97%E9%80%8F-Pass-The-Hash%E7%9A%84%E5%AE%9E%E7%8E%B0/">《域渗透-Pass-The-Hash的实现》</a>）</p>
+
+<p>战术情报通常是通过读公开的报告，对样本和组织进行分析，以及和别的厂商交换情报中获得。</p>
+
+<p>例如御见威胁情报中心 2019-02-22 发布的 <a href="https://guanjia.qq.com/news/n1/2482.html">《盘一盘2018年那些难缠的顽固病毒木马》</a> 中便对2018 年中活跃的Bootkit/Rootkit 木马常用的技术手段、传播渠道、危害等进行了分析。</p>
+
+<h3 id="14-技术情报">1.4 技术情报</h3>
+
+<p>技术情报(Technical Threat Intelligence) 是特定恶意软件的指标（hash、域名、ip），是用于机读的可以用于自动化检测、分析的信息，相对来说 TTPs 主要是人读的情报。</p>
+
+<p>技术级情报又可以称为失陷检测指标即 IOC (Indicator Of Compromise)，正如其名字，<strong>失陷检测指标即为可以用于提供给用户检测系统是否已被恶意软件或者攻击者攻陷，如果在系统内发现了这些指标即表明系统已被攻陷</strong>。</p>
+
+<p>例如 2019-02-25 御见威胁情报中心发布的文章 <a href="https://s.tencent.com/research/report/657.html">《永恒之蓝下载器木马持续活跃：始于供应链攻击，不断变换攻击手法》</a> 中同时也发布了该事件相关的 IOC：</p>
+
+<div align="center">
+  <img src="/imgs/threatintel/3.png" />
+  <p>图 1-3 IOC 示例</p>
+</div>
+
+<p>若在用户机器上检测到有非浏览器进程连接了“驱动人生木马”的 IOC 中的域名如： i.haqo.net，则用户可能已经感染了该木马，可以结合终端上的进程和网络日志等便可以定位该攻击，并进行后续的响应。</p>
+
+<p>有人会说 TTPs 中也包含有 ip、域名等信息，和 IOC 有什么区别呢。 STIX 的文档中有一篇举了一个例子来讲 TTPs 和 IOC 的区别：</p>
+
+<p>”TTP 描述了攻击者的行为和攻击方式，IOC 描述如何识别这些攻击行为。</p>
+
+<p>伪造 100 元钞票的具体方法可以认为是 TTP，而通过水印等方法识别钞票是否是假钞的具体指导即为 IOC。”</p>
+
+<p>TTPs 和 IOC 之间其实是可以联动的，通过 IOC 检测到内网安全威胁之后，IOC 可以反向索引到对应的 TTPs，以此为基础可以指导用户解决安全问题，找到后续提升安全防御能力的途径，并通过其追溯攻击者。</p>
+
+<h2 id="二-威胁情报的层次">二、 威胁情报的层次</h2>
+
+<div align="center">
+  <img src="/imgs/threatintel/2-1.png" />
+  <p>图 2-1 威胁情报的层次</p>
+</div>
+
+<p>广义的威胁情报中，按获取难度、准确度、信息量从低到高，依次为 :</p>
+
+<ul>
+  <li>
+    <p>恶意文件的 hash</p>
+  </li>
+  <li>
+    <p>主机特征（主要为 windows平台）：互斥体、运行路径、注册表项</p>
+  </li>
+  <li>
+    <p>网络特征： ip、域名、url、通信协议</p>
+  </li>
+  <li>
+    <p>事件特征（TTPs）：恶意团伙使用的技术手段，同一个团伙可能会使用类似的手段，可以作为定位团伙的证据</p>
+  </li>
+  <li>
+    <p>组织：基于事件特征证据和其他信息，可能会分辨出多个攻击事件背后的同一个组织，并判定组织的来源、分工、资源状况、人员构成、行动目标等要素。</p>
+  </li>
+  <li>
+    <p>人员情报：定位到攻击背后虚拟身份对应的真实人员身份，定位到人也就定位到了威胁的根源(比如定位了病毒的作者并掌握了证据即可实施抓捕)。</p>
+  </li>
+</ul>
+
+<p>对应图 1-2，层次越高、有效时间越长的情报越难以获取。相对来说， TTPS 和 IOC（主机、网络特征，恶意文件 hash）等数据获取相对容易但是失效时间也更短。</p>
+
+<p>其中文件样本 hash 和主机特征、网络特征都可以通过沙箱和数据分析等自动化手段生成。文件 hash 只需要攻击者修改文件的一两个字节便可修改，所以失效的速度是最快的，用于检测时更多是使用的是主机特征和网络特征。</p>
+
+<p>其中主机特征（mutex、运行路径、命令行特征、注册表项）主要结合终端上的 EDR 产品使用。如果安装有终端 EDR 产品再结合 SOC 等安全大数据存储分析系统，安全效果最好。但是国内的现实情况是，除了腾讯、华为、阿里等等大型科技公司或者金融等安全意识较高的公司，很少有企业在办公环境和服务器环境中部署有终端EDR产品。</p>
+
+<p>网络特征（ip、域名）可以应用于网络边界的流量检测系统中，如 IDS 类系统，也可以和 SOC 类系统联动，检测多种设备当前及过去的安全情况。</p>
+
+<p>基于主机特征和网络特征做聚类分析，以及通过各个维度的相似度即可以将同一家族的恶意软件分类到一起。再根据 IOC 的上下文信息，找到攻击者的攻击攻击方法或者样本传播的渠道。这些信息即 TTPs 。</p>
+
+<p>收集了多个独立家族和攻击样例后，可能可以分辨出多个家族背后是同一个团伙。例如同一个团伙可能会有自己开发的工具，或者固定的传播渠道，根据这些 TTPs 信息可能能够分析出背后的团伙。</p>
+
+<p>在分析出组织后，通过受影响的地区、行业和普通用户能够大致分析出攻击者的目标群体，再辅以对样本包含的语言特征或者样本的伪装形势分析。也能大致查明攻击者的攻击目标和目的，在结合现实中的新闻等信息可以大概推断出攻击者的来源。</p>
+
+<p>从对样本的分析开始，逐步收集技术手段等更多信息，最后定位到组织和其攻击目的这一过程，在 APT 攻击分析中有完整的体现。</p>
+<h3 id="21-apt-分析一例">2.1 APT 分析一例</h3>
+
+<p>参考腾讯御见威胁情报中心于2月26号发布的 APT 分析报告<a href="https://s.tencent.com/research/report/659.html">《响尾蛇（SideWinder）APT组织针对南亚的攻击活动披露》</a>，该报告中首先对发现的最新的攻击样本进行分析，得到攻击者使用的技术手段（TTPs 信息），和使用的网络特征（IOC信息）。然后通过攻击者使用的诱饵文件的内容判断攻击目标应该跟巴基斯坦相关，然后通过文档作者信息和另一个文档的投递使用的下载地址分析出目标跟巴基斯坦军方有关。最后得到了攻击者的组织信息如下图：</p>
+
+<div align="center">
+  <img src="/imgs/threatintel/2-2.png" />
+  <p>图2-2 T-APT-04攻击者信息</p>
+</div>
+
+<h3 id="22-从样本出发找到关联">2.2 从样本出发找到关联</h3>
+
+<p>在分析攻击时，可以使用各类分析平台如<a href="https://www.virustotal.com/">VirusTotal</a>、<a href="https://s.tencent.com/product/antu/index.html">腾讯安图高级威胁追溯系统</a>、<a href="https://ti.qianxin.com/">奇安信威胁情报中心</a>以及<a href="https://x.threatbook.cn/">微步威胁情报中心</a> 等通过对已知信息进行拓线分析，溯源攻击者来源。例如通过对样本外联的域名进行可视化分析，查询域名历史解析的 ip，发现攻击者使用的 ip 以及更多可能被用来发起过攻击的基础设施。</p>
+
+<div align="center">
+  <img src="/imgs/threatintel/2-3.png" />
+  <p>图 2-3 使用安图的安全可视化分析界面分析 Bondat 蠕虫 </p>
+</div>
+
+<h3 id="23-关联到组织">2.3 关联到组织</h3>
+
+<p>或是在分析一个 IOC 时，安图高级威胁追溯系统会通过安全知识图谱自动关联该 IOC 对应的组织信息，包括该组织的背景（来源、攻击目标、技术手段等等），投递样本使用的网络特征和样本的 C2 网络特征，以及该组织历史上的各类信息。</p>
+
+<div align="center">
+  <img src="/imgs/threatintel/2-4.png" />
+  <p>图 2-4 安图关联团伙信息界面</p>
+</div>
+
+<p>在御见威胁情报中心发布的 APT 分析文章《疑似DarkHotel APT组织针对中国贸易行业高管的定向攻击披露》中，分析人员通过对捕捉到的 APT 样本进行分析，提取外联的 c2 服务器信息（IOC），在安图高级威胁追溯系统上通过该 IOC 关联到了更多的样本，并通过这些样本中提取的信息以及攻击方法，判断该攻击发起者疑似为 DarkHotel APT 组织。</p>
+
+<div align="center">
+  <img src="/imgs/threatintel/2-5.png" />
+  <p>图 2-5 使用安图进行关联样本分析 </p>
+</div>
+
+<h3 id="24-定位到人">2.4 定位到人</h3>
+
+<p>比组织信息更高层次的信息为人员信息，因为要完成虚拟身份到真实人员身份的映射需要很强的大数据安全分析系统和基础设施建设，一旦定位到人后便意味着战斗结束，因为一切威胁的最终源头还是人。</p>
+
+<p>在这方法美帝投入了很多资源建设了 Xkeyscore系统。斯诺登在接收电视采访时曾说过：“在 <a href="https://en.wikipedia.org/wiki/XKeyscore">XKeyscore</a> 的帮助下，你可以阅读世界上任何人发送的邮件，获取所有网站的进出流量。并且可以追踪某一个的个人电脑，就算他在不同的地区之间移动。”。</p>
+
+<p>XKeyscore 在现实中应用的结果可以参考去年美帝的发过的一篇对朝鲜黑客的指控 <a href="https://www.justice.gov/opa/press-release/file/1092091/download">MJ18-1479</a>，该指控中由FBI的一名专门追踪网络犯罪的特工对朝鲜黑客朴金赫做了有罪推定，断定了该人为朝鲜官方的黑客，参与并实施了多起网络攻击，包括：</p>
+
+<p>2014 年对索尼影业的攻击（索尼影业 2014 上映了一部影片名为《刺杀金正恩》）。</p>
+
+<p>参与编写了2017 年5月爆发的影响了全球的勒索病毒 WannaCry 。</p>
+
+<p>攻击过美国军火商洛克希德马丁（该公司也是网络安全中 kill-chain 概念的提出者）。</p>
+
+<p>攻击孟加拉国中心银行，盗取了 8100 万美元的资金。并分别在 15、16、17、18 年攻击过欧洲、亚洲、非洲以及北美和南美的其他国家的银行，造成了超过1百万美元以上的损失。</p>
+
+<p>等等。</p>
+
+<p>最后，指控中给出了朴金赫的个人信息：</p>
+
+<ul>
+  <li>
+    <p>毕业于朝鲜金策大学(kut.edu.kp)</p>
+  </li>
+  <li>
+    <p>2014年返回朝鲜</p>
+  </li>
+  <li>
+    <p>Lazarus黑客小组的成员—隶属朝鲜Lab001—隶属朝鲜侦查总局。</p>
+  </li>
+</ul>
+
+<p>指控中的举证章节列举了一系列的证据(引用自<a href="https://www.secpulse.com/archives/75460.html">《关注网络战——换个角度看美国对朝鲜黑客的指控(MJ-18-1479)》</a>)，包括：</p>
+
+<p>tty198410@gmail.com、 watsonhenny@gmail.com 、yardgen@gmail.com 、jasmuttly@daum.net、 mrwangchung01@gmail.com 这几个邮箱用同一台机器访问过.</p>
+
+<p>tty198410@gmail.com 这个邮箱的注册时间是2011年9月1日,注册时候填写的姓名是 “K YM”, 注册时候填写的恢复邮箱是 hyonu@hotmail.com,邮箱所有人在2014年9月至2015年5月挂着代理使用的这个邮箱.此邮箱账号的calendar服务时区设置为亚洲/平壤.</p>
+
+<p>2013年11月,tty198410@gmail.com 注册了Rapid7账号(就是那个开发Metasploit的公司). 访问的IP是210.52.109.0-210.52.109.255(属于中国但在被朝鲜使用).</p>
+
+<p>tty198410@gmail.com 使用”Kim HyonWu”名字注册过另一家网络安全公司的账号.</p>
+
+<p>hyonu@hotmail.com 注册时间为 2007年3月13日,使用的语言是朝鲜语,注册位置是韩国首尔,注册名字是 “Kim Hyon Woo”.</p>
+
+<p>hyonu@hotmail.com 在2007年4月23日使用IP#2在某知名软件论坛查看了软件编程相关的文章.</p>
+
+<p>hyonwoo01@gmail.com此邮箱收到了N多邮件附件,每一个附件都被FBI探员成功恢复.里面涉及特马样本相关信息.或与DarkSeoul赛博攻击有关.</p>
+
+<p>8）2015年12月4日在黑客论坛(hackforums.net)发帖 “我的邮箱是campbelldavid793@gmail.com 谁有doc exploit 发我一份”</p>
+
+<div align="center">
+  <img src="/imgs/threatintel/2-5.png" />
+  <p>图 2-6 MJ18-1479 分析用图 </p>
+</div>
+
+<p>从该指控可以看出，美国通过对全网流量的持续监控以及对邮件服务商数据的获取，得到了 ip 访问指定邮箱，使用特定邮箱注册、登录网站，以及邮箱的备份邮箱这种普通人或机构完全得不到的信息。并且可以追溯到 2008 年（也就是 10 年以前）。通过大数据手段和情报收集基础设施的持续建设，使得美国最终可以达到威胁情报的最高层次，即定位到人。</p>
+
+<h2 id="三总结">三、总结</h2>
+
+<p>本文通过威胁情报的定义和威胁情报的层次，对威胁情报的概念和宏观的应用场景进行简单的介绍。在说明了什么是威胁情报后，接下来会在后续的文章中聊一聊威胁情报相关的具体技术细节，即如何通过大数据发现威胁情报，以及威胁情报在实际安全产品中的应用。</p>
+
+<p>接下来还有：</p>
+
+<p>《威胁情报系列（二）：威胁情报从哪里来》</p>
+
+<p>《威胁情报系列（三）：威胁情报怎么用》</p>
+
+<p>敬请期待。</p>
+
+<h2 id="四参考阅读">四、参考阅读</h2>
+
+<p>https://www.anquanke.com/post/id/164836</p>
+
+<p>https://stixproject.github.io/documentation/concepts/ttp-vs-indicator/</p>
+
+<p>https://ti.360.net/blog/articles/level-of-threat-intelligence/</p>
+
+<p>https://www.ncsc.gov.uk/content/files/protected_files/guidance_files/MWR_Threat_Intelligence_whitepaper-2015.pdf</p>
+
+<p>https://en.wikipedia.org/wiki/XKeyscore#According_to_Snowden_and_Greenwald</p>
+
+<p>https://www.justice.gov/opa/press-release/file/1092091/download</p>
+
+<p>https://www.secpulse.com/archives/75460.html</p>
+
+  </article>
+
+</div>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function () {
+        var s = document.createElement('script'); s.async = true;
+        s.type = 'text/javascript';
+        s.src = '//' + disqus_shortname + '.disqus.com/count.js';
+        (document.getElementsByTagName('HEAD')[0] || document.getElementsByTagName('BODY')[0]).appendChild(s);
+    }());
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/raphael/2.1.0/raphael-min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+<script src="https://flowchart.js.org/flowchart-latest.js"></script>
+<script src="/js/highlight.min.js"></script>
+<script src="/js/toc.js"></script>
+<script src="/js/qrcode.min.js"></script>
+<script>
+if (!String.prototype.format) {
+    String.prototype.format = function() {
+        var args = arguments;
+        return this.replace(/{(\d+)}/g, function(match, number) { 
+            return typeof args[number] != 'undefined'
+                ? args[number]
+                : match
+            ;
+        });
+    };
+}
+
+$('pre code').each(function(i, block) {
+    hljs.highlightBlock(block);
+});
+
+$('.language-flow').each(function(i, block) {
+    console.log(block);
+    code = $(this).text();
+    diagram = flowchart.parse(code);
+    canvas_id = 'flow'+ i;
+    console.log(canvas_id);
+    temp = "<div id='{0}'> </div>".format(canvas_id);
+    console.log(temp);
+    $(this).html(temp);
+    diagram.drawSVG(canvas_id, {
+        'x': 0,
+        'y': 0,
+        'line-width': 3,
+        'line-length': 50,
+        'text-margin': 10,
+        'font-size': 14,
+    });	
+});
+
+$('#toc').toc({
+    noBackToTopLinks: true,
+    listType: 'ul',
+    title: 'TOC',
+});
+
+var url = location.href;
+console.log(url);
+var qrcode = new QRCode("qrcode", {
+    text: url,
+    width: 128,
+    height: 128,
+    colorDark : "#000000",
+    colorLight : "#ffffff",
+    correctLevel : QRCode.CorrectLevel.H
+});
+
+$(document).ready(function () {
+    $('#show_qrcode').on('mouseenter', function () {
+        $('#qrcode').show();
+        $(this).css({
+            "text-decoration": "underline"
+        });
+    }).on('mouseleave', function () {
+        $('#qrcode').hide();
+        $(this).css({
+            "text-decoration": ''
+        });
+    });;
+});
+</script>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col  footer-col-1">
+        <ul class="contact-list">
+	  <li>
+          <li><a href="mailto:mithrilwoodrat@gmail.com">mithrilwoodrat@gmail.com</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col  footer-col-2">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/Mithrilwoodrat">
+              <span class="icon  icon--github">
+                <svg viewBox="0 0 16 16">
+                  <path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/>
+                </svg>
+              </span>
+              <span class="username">Mithrilwoodrat</span> 
+            </a>
+          </li>
+          
+        </ul>
+      </div>
+  </div>
+</footer>
+
+<script>
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-66599686-1', 'auto');
+  ga('send', 'pageview');
+
+</script>
+</body>
+</html>

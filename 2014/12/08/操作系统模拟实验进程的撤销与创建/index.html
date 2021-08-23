@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>
+    操作系统模拟实验(进程的撤销与创建)
+    </title>
+  <link type="application/atom+xml" rel="alternate" href="/feed.xml" title="虚实" />
+  
+  <style>
+  table{
+    border-left:1px solid #000000;border-top:1px solid #000000;
+    width: 100%;
+    word-wrap:break-word; word-break:break-all;
+  }
+  table th{
+  text-align:center;
+  }
+  table th,td{
+    border-right:1px solid #000000;border-bottom:1px solid #000000;
+  }
+  </style>
+
+  <meta name="description" content="一个很简陋的Python实现 : )">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/toc.css">
+  <link rel="canonical" href="/2014/12/08/%e6%93%8d%e4%bd%9c%e7%b3%bb%e7%bb%9f%e6%a8%a1%e6%8b%9f%e5%ae%9e%e9%aa%8c%e8%bf%9b%e7%a8%8b%e7%9a%84%e6%92%a4%e9%94%80%e4%b8%8e%e5%88%9b%e5%bb%ba/">
+  <link rel="alternate" type="application/rss+xml" title="虚实" href="/feed.xml" />
+  <link rel="stylesheet" href="/css/highlight.min.css">
+  <link href="//cdn.staticfile.org/font-awesome/3.2.1/css/font-awesome.min.css" rel="stylesheet"media="all">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+    <div>
+      <a class="site-title" href="/">虚实</a>
+      <div class="site-pages">
+		<a class="site-page" href="/archive/">归档</a>
+		<a class="site-page" href="/categories/">分类</a>
+		<a class="site-page" href="/about/">关于</a>
+		<a class="site-page" href="/friend-links/">友情链接</a>
+        <a class="site-page" href="/recommends/">推荐</a>
+      </div>
+      <p class="site-sub-title">记录下折腾和学习的过程</p>
+    </div>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <div class="post">
+
+  <header class="post-header">
+    <h1 class="post-title">操作系统模拟实验(进程的撤销与创建)</h1>
+    <p class="post-meta">Dec 8, 2014 • admin</p>
+
+	<p class="post-meta"> categories :   <a href="/categories/#操作系统"> 操作系统 </a>  </p>
+    <div id="show_qrcode">
+        <a>扫描二维码</a>
+        <div id="qrcode" style="display:none;position:absolute;z-index:1"></div>
+    </div>
+  </header>
+  <div class="nav">
+      <div id="toc" class="toc"></div>
+  </div>
+  <article class="post-content">
+    <p>一个很简陋的Python实现 : )</p>
+
+<pre class="prettyprint lang-py"># -*- coding: utf-8 -*-
+class Pcb(object):
+    def __init__(self):
+        self.pid = None
+        self.ppid = None # id of parent
+        self.arrive_time = 0
+        self.need_time = 0
+        self.pprio = 0 #priority
+
+    def set_pid(self, pid):
+        self.pid = pid
+    def set_parent(self, parent):
+        self.ppid = parent
+    def set_arrive_time(self, arrive_time):
+        self.arrive_time = arrive_time
+    def set_need_time(self, need_time):
+        self.need_time = need_time
+
+class Pnode(object):
+    def __init__(self):
+        self.node = Pcb()
+        self.child = []
+
+    def set_node_pid(self, pid):
+        self.node.set_pid(pid)
+    def set_node_parent(self, ppid):
+        self.node.set_parent(ppid)
+    def set_node_arrtime(self, arrtime):
+        self.node.set_arrive_time(arrtime)
+    def set_node_needtime(self, needtime):
+        self.node.set_need_time(needtime)
+    def get_node_pid(self):
+        return self.node.pid
+    def get_node_parent(self):
+        return self.node.ppid
+    def get_node_arrtime(self):
+        return self.node.arrive_time
+    def get_node_needtime(self):
+        return self.node.need_time
+        
+class Pnodes(object):
+    def __init__(self):
+        self.root = Pnode()
+        self.root.set_node_pid(0)
+        self.nodes = {self.root.get_node_pid():self.root}
+        
+        
+    def createpc(self,pid,ppid):
+        if len(self.nodes) == 0:
+            return 0
+        p = self.nodes
+        if pid in p:
+            print "process already exists"
+        elif  not ppid in p:
+            print "parent process does not exist"
+        else:
+            p[pid] = Pnode()
+            p[pid].set_node_pid(pid)
+            p[pid].set_node_parent(ppid)
+            p[ppid].child.append(pid)
+
+    def deletepc(self, pid):
+        if pid == 0:
+            print "pid 0 can't be deleted"
+            return 0
+        if not(pid in self.nodes):
+            print "process not exists"
+            return 0
+        if len(self.nodes[pid].child) == 0:
+            ppid = self.nodes[pid].get_node_parent()
+            self.nodes[ppid].child.remove(pid)
+            self.nodes.pop(pid)
+        else:
+            for cpid in self.nodes[pid].child:
+                self.deletepc(cpid)
+            self.deletepc(pid)
+
+    
+
+    def show(self):
+        for pcb in self.nodes:
+            print pcb," : ", self.nodes[pcb].child
+            
+
+
+
+
+def main():
+    pnodes = Pnodes()
+    while(1):
+        cmd = raw_input("cmd:")
+        if cmd == "exit":
+            break
+        if cmd == "show":
+            pnodes.show()
+        else:
+            if "createpc" in cmd:
+                cmd = cmd[9:-1]
+                pcno,ppcno = map(int, cmd.split(","))
+                pnodes.createpc(pcno, ppcno)
+            elif "deletepc" in cmd:
+                cmd = cmd[9:-1]
+                pcno = int(cmd)
+                print "deleting process no:",pcno
+                pnodes.deletepc(pcno)
+            else:
+                print "error command!"
+                break
+
+
+if __name__ == "__main__":
+    main()
+</pre>
+
+  </article>
+
+</div>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function () {
+        var s = document.createElement('script'); s.async = true;
+        s.type = 'text/javascript';
+        s.src = '//' + disqus_shortname + '.disqus.com/count.js';
+        (document.getElementsByTagName('HEAD')[0] || document.getElementsByTagName('BODY')[0]).appendChild(s);
+    }());
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/raphael/2.1.0/raphael-min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+<script src="https://flowchart.js.org/flowchart-latest.js"></script>
+<script src="/js/highlight.min.js"></script>
+<script src="/js/toc.js"></script>
+<script src="/js/qrcode.min.js"></script>
+<script>
+if (!String.prototype.format) {
+    String.prototype.format = function() {
+        var args = arguments;
+        return this.replace(/{(\d+)}/g, function(match, number) { 
+            return typeof args[number] != 'undefined'
+                ? args[number]
+                : match
+            ;
+        });
+    };
+}
+
+$('pre code').each(function(i, block) {
+    hljs.highlightBlock(block);
+});
+
+$('.language-flow').each(function(i, block) {
+    console.log(block);
+    code = $(this).text();
+    diagram = flowchart.parse(code);
+    canvas_id = 'flow'+ i;
+    console.log(canvas_id);
+    temp = "<div id='{0}'> </div>".format(canvas_id);
+    console.log(temp);
+    $(this).html(temp);
+    diagram.drawSVG(canvas_id, {
+        'x': 0,
+        'y': 0,
+        'line-width': 3,
+        'line-length': 50,
+        'text-margin': 10,
+        'font-size': 14,
+    });	
+});
+
+$('#toc').toc({
+    noBackToTopLinks: true,
+    listType: 'ul',
+    title: 'TOC',
+});
+
+var url = location.href;
+console.log(url);
+var qrcode = new QRCode("qrcode", {
+    text: url,
+    width: 128,
+    height: 128,
+    colorDark : "#000000",
+    colorLight : "#ffffff",
+    correctLevel : QRCode.CorrectLevel.H
+});
+
+$(document).ready(function () {
+    $('#show_qrcode').on('mouseenter', function () {
+        $('#qrcode').show();
+        $(this).css({
+            "text-decoration": "underline"
+        });
+    }).on('mouseleave', function () {
+        $('#qrcode').hide();
+        $(this).css({
+            "text-decoration": ''
+        });
+    });;
+});
+</script>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col  footer-col-1">
+        <ul class="contact-list">
+	  <li>
+          <li><a href="mailto:mithrilwoodrat@gmail.com">mithrilwoodrat@gmail.com</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col  footer-col-2">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/Mithrilwoodrat">
+              <span class="icon  icon--github">
+                <svg viewBox="0 0 16 16">
+                  <path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/>
+                </svg>
+              </span>
+              <span class="username">Mithrilwoodrat</span> 
+            </a>
+          </li>
+          
+        </ul>
+      </div>
+  </div>
+</footer>
+
+<script>
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-66599686-1', 'auto');
+  ga('send', 'pageview');
+
+</script>
+</body>
+</html>

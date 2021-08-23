@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>
+    配置 logstash 监控 nginx access log 写入 mysql
+    </title>
+  <link type="application/atom+xml" rel="alternate" href="/feed.xml" title="虚实" />
+  
+  <style>
+  table{
+    border-left:1px solid #000000;border-top:1px solid #000000;
+    width: 100%;
+    word-wrap:break-word; word-break:break-all;
+  }
+  table th{
+  text-align:center;
+  }
+  table th,td{
+    border-right:1px solid #000000;border-bottom:1px solid #000000;
+  }
+  </style>
+
+  <meta name="description" content="在存储能力和数据量有限的情况下，我们可以选择 MySQL 来进行简单的数据存储和分析。">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/toc.css">
+  <link rel="canonical" href="/2018/10/27/%E9%85%8D%E7%BD%AE%20logstash%20%E7%9B%91%E6%8E%A7%20nginx%20access%20log%20%E5%86%99%E5%85%A5%20mysql/">
+  <link rel="alternate" type="application/rss+xml" title="虚实" href="/feed.xml" />
+  <link rel="stylesheet" href="/css/highlight.min.css">
+  <link href="//cdn.staticfile.org/font-awesome/3.2.1/css/font-awesome.min.css" rel="stylesheet"media="all">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+    <div>
+      <a class="site-title" href="/">虚实</a>
+      <div class="site-pages">
+		<a class="site-page" href="/archive/">归档</a>
+		<a class="site-page" href="/categories/">分类</a>
+		<a class="site-page" href="/about/">关于</a>
+		<a class="site-page" href="/friend-links/">友情链接</a>
+        <a class="site-page" href="/recommends/">推荐</a>
+      </div>
+      <p class="site-sub-title">记录下折腾和学习的过程</p>
+    </div>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <div class="post">
+
+  <header class="post-header">
+    <h1 class="post-title">配置 logstash 监控 nginx access log 写入 mysql</h1>
+    <p class="post-meta">Oct 27, 2018 • admin</p>
+
+	<p class="post-meta"> categories :   <a href="/categories/#ELK"> ELK </a>  </p>
+    <div id="show_qrcode">
+        <a>扫描二维码</a>
+        <div id="qrcode" style="display:none;position:absolute;z-index:1"></div>
+    </div>
+  </header>
+  <div class="nav">
+      <div id="toc" class="toc"></div>
+  </div>
+  <article class="post-content">
+    <p>在存储能力和数据量有限的情况下，我们可以选择 MySQL 来进行简单的数据存储和分析。</p>
+
+<p>Logstash 支持监听文件更新，并可以解析日志后写入 MySQL 数据库。使用 Logstash 可以免去繁琐的开发流程，快速实现旁路日志监控上报功能。</p>
+
+<p>要使用 Logstash 监控 Nginx access log 转储到 MySQL 中，需要用到 Logstash 的3个插件。即 file input plugin，grok filter plugin 以及 jdbc output plugin。</p>
+
+<p>本文基于 Logstash 5.6 版本，其余版本只是配置语法和安装方法会有细微不同，使用方法均类似。示例的运行环境为 Ubuntu 16.04</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>~$ lsb_release -a
+No LSB modules are available.
+Distributor ID: Ubuntu
+Description: Ubuntu 16.04.1 LTS
+Release: 16.04
+Codename: xenial
+</code></pre></div></div>
+
+<h2 id="一安装-logstash-及配置所需插件">一.安装 Logstash 及配置所需插件</h2>
+
+<p>首先我们需要从官网上下载对应版本的 logstash 安装包。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>wget https://artifacts.elastic.co/downloads/logstash/logstash-5.6.0.tar.gz
+</code></pre></div></div>
+
+<p>logstash 5.6 版本需要机器上安装有 openjdk 8，若安装了 openjdk 9 则需要手动降级或设置环境变量。</p>
+
+<p>安装好 jdk 后，解压缩 logstash-5.6.0 版本的 tgz 包即可运行。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ tar xvf logstash-5.6.0.tar.gz
+$ ./logstash-5.6.4/bin/logstash --version
+logstash 5.6.4
+</code></pre></div></div>
+
+<p>不过， logstash 是通过插件系统来支持的将结果写入到数据库，默认的安装包中没有自带 logstash-output-jdbc 插件，需要手动安装。</p>
+
+<h3 id="1安装-logstash-output-jdbc">1.安装 logstash-output-jdbc</h3>
+
+<p>logstash-output-jdbc 的安装分为两步，第一步是安装插件本身，插件安装成功后还需要下载 jdbc driver 的 jar 包并配置。</p>
+
+<p>通常情况下，调用 logstash 自带的 logstash-plugin 工具即可成功安装该插件。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>../logstash-5.6.4/bin/logstash-plugin install logstash-output-jdbc
+</code></pre></div></div>
+
+<p>但是在网络环境不够良好的情况下， Logstash 也支持插件的离线安装。</p>
+
+<p>先在一台已经成功安装了 logstash-output-jdbc 插件的机器上将该插件导出为离线安装包。(可以从<a href="https://github.com/Mithrilwoodrat/logstash-5.6-plugins-collect">Github</a>下载)</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>./logstash-5.6.4/bin/logstash-plugin prepare-offline-pack logstash-output-jdbc
+</code></pre></div></div>
+
+<p>将该安装包拷贝到目标机器上后，指定文件目录进行离线安装</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>../logstash-5.6.4/bin/logstash-plugin install file:///home/ubuntu/log_proxy_ip/logstash-offline-plugins-5.6.4.zip
+</code></pre></div></div>
+
+<h3 id="2-jdbc-driver-安装配置">2. jdbc driver 安装配置</h3>
+
+<p>因为我们准备使用的是 mysql，只需要安装 mysql-connector-java 并指定为 jdbc driver 即可。</p>
+
+<p>如果安装有 maven 的话，可以配置 pom.xml 下载 mysql-connector-java 后拷贝到 logstash 目录下。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;dependency&gt;
+  &lt;groupId&gt;mysql&lt;/groupId&gt;
+  &lt;artifactId&gt;mysql-connector-java&lt;/artifactId&gt;
+  &lt;version&gt;5.1.6&lt;/version&gt;
+&lt;/dependency&gt;
+</code></pre></div></div>
+
+<p>或者可以从官方的链接中下载安装包 <a href="https://dev.mysql.com/downloads/connector/j/8.0.html">https://dev.mysql.com/downloads/connector/j/8.0.html</a></p>
+
+<p>简单一点，从别的机器拷贝一个 jar 包也可以（可以从<a href="https://github.com/Mithrilwoodrat/logstash-5.6-plugins-collect">Github</a>下载）</p>
+
+<p>配置则在 logstash 的 <code class="language-plaintext highlighter-rouge">/vender/</code> 目录下创建 <code class="language-plaintext highlighter-rouge">/jar/jdbc/</code> 子目录，然后将对应的 jar 包拷贝到该目录即可。</p>
+
+<p>若不想拷贝，也可以在 logstash 的配置文件中指定特定 jar 包的目录（设置 ·<code class="language-plaintext highlighter-rouge">driver_jar_path </code> 变量）</p>
+
+<p>具体参考logstash-output-jdbc Github 仓库的 <a href="https://github.com/theangryangel/logstash-output-jdbc"> README</a> 文档。</p>
+
+<h2 id="二编写对应的配置文件">二.编写对应的配置文件</h2>
+
+<p>Nginx 的 access log 通常在 nginx.conf 中配置，使用包管理软件安装的 nginx 一般配置文件默认位于 <code class="language-plaintext highlighter-rouge">/etc/nginx/</code> 目录下。</p>
+
+<p>其中 http 下 access_log 配置项控制了 access log 的位置。默认情况下的配置如下:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>http {
+access_log /var/log/nginx/access.log
+}
+</code></pre></div></div>
+
+<p>nginx access log 默认的格式为 <code class="language-plaintext highlighter-rouge">combined format</code>，logstash 的 grok 插件默认支持该格式。</p>
+
+<p>nginx 的日志配置可以参考其官方<a href="https://docs.nginx.com/nginx/admin-guide/monitoring/logging/">文档</a>。</p>
+
+<p>基于上面的假设，我们可以编写对应的 logstash 配置文件<code class="language-plaintext highlighter-rouge">nginx_example.conf</code>如下，其中 <code class="language-plaintext highlighter-rouge">stdout { codec =&gt; rubydebug }</code> 是让 logstash 将解析后的日志打印到 stdout。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>input {
+  file {
+    path =&gt; ["/var/log/nginx/access.log"]
+    type =&gt; "nginx"
+  }
+}
+
+filter {
+ grok {
+   match =&gt; [ "message" , "%{COMBINEDAPACHELOG}+%{GREEDYDATA:extra_fields}"]
+   overwrite =&gt; [ "message" ]
+ }
+}
+
+output {
+    stdout { codec =&gt; rubydebug }
+}
+</code></pre></div></div>
+
+<p>使用 systemctl 启动 nginx，并使用该配置启动 logstash 查看是否成功简析 nginx 的 access log。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ systemctl start nginx
+</code></pre></div></div>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ ./logstash-5.6.4/bin/logstash -f nginx_example.conf
+</code></pre></div></div>
+
+<p>我在腾讯云的一台机器上搭建了该环境，在启动 nginx 和 logstash 后，马上就收到了各种扫描请求。（本地环境中测试可以手动 curl http://127.0.0.1 ）</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{
+        "request" =&gt; "/10",
+          "agent" =&gt; "\"lynx\"",
+           "auth" =&gt; "-",
+          "ident" =&gt; "-",
+           "verb" =&gt; "POST",
+        "message" =&gt; "61.216.152.133 - - [27/Oct/2018:19:34:50 +0800] \"POST /10 HTTP/1.1\" 404 178 \"-\" \"lynx\"",
+           "type" =&gt; "nginx",
+           "path" =&gt; "/var/log/nginx/access.log",
+       "referrer" =&gt; "\"-\"",
+     "@timestamp" =&gt; 2018-10-27T12:08:41.732Z,
+       "response" =&gt; "404",
+          "bytes" =&gt; "178",
+       "clientip" =&gt; "61.216.152.133",
+       "@version" =&gt; "1",
+           "host" =&gt; "localhost.localdomain",
+    "httpversion" =&gt; "1.1",
+      "timestamp" =&gt; "27/Oct/2018:19:34:50 +0800"
+}
+</code></pre></div></div>
+
+<p>可以看到 logstash 成功将 nginx 的 access log
+解析成了结构化的数据。在此基础上，我们可以编写 logstash 配置文件，过滤特定的请求，并以特定的语句将感兴趣的数据写入到 mysql。</p>
+
+<p>例如上面的流量经过分析是来着台湾ip的botnet 发起的扫描。<a href="https://www.abuseipdb.com/check/61.216.152.133">https://www.abuseipdb.com/check/61.216.152.133</a></p>
+
+<p>假设我们要记录所有使用 POST 方法访问该 URI 的请求，可以在 logstash output 中添加条件如下:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>output {
+    if [request] == "/10" {
+       if [verb] == "POST" {
+           stdout { codec =&gt; rubydebug }
+       }
+    }
+}
+</code></pre></div></div>
+
+<h3 id="jdbc-及数据库配置">jdbc 及数据库配置</h3>
+
+<p>上面我们已经验证了 logtash 可以成功的解析和记录特定的 nginx access log，接下来就是如何配置 mysql 及 logtash jdbc 将数据写入 mysql 了。</p>
+
+<p>假设我们的 mysql server 位于本地服务器，并且用户为 root， 密码为空。</p>
+
+<p>我们首先登录进 mysql ，创建用于记录 access log 的数据库和表。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$  mysql -uroot
+</code></pre></div></div>
+
+<h4 id="创建数据库">创建数据库</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>create database nginx_access_log character set utf8;
+</code></pre></div></div>
+
+<h4 id="创建表">创建表</h4>
+
+<p>记录恶意扫描的机器的 ip 和请求的 http method 以及 http url。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>CREATE TABLE `access_log` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `clientip` varchar(135) NOT NULL DEFAULT '' COMMENT 'ip',
+  `method` varchar(30),
+  `url` varchar(191),
+  `insert_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `ip_UNIQUE` (`clientip`)
+) ENGINE=InnoDB  DEFAULT CHARSET=utf8
+</code></pre></div></div>
+
+<h4 id="配置-logstash-output-jdbc-插件">配置 logstash-output-jdbc 插件</h4>
+
+<p>在 logtash 配置文件 output 部分中，
+之前我们添加了请求方法为 POST，URL 为 <code class="language-plaintext highlighter-rouge">/10</code> 的过滤条件，我们在此基础上添加 jdbc 插件的配置。</p>
+
+<p>根据 <a href="https://www.rubydoc.info/gems/logstash-output-jdbc/0.1.1"> 文档</a> ，我们需要设置的变量如下:</p>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">driver_class</code> : 指定jdbc 的类型。</li>
+  <li><code class="language-plaintext highlighter-rouge">connection_string</code>: jdbc 链接的 URI</li>
+  <li><code class="language-plaintext highlighter-rouge">statement</code>: 类型为数组，其中第一个元素为未绑定参数的 SQL 语句，后续的元素为传入 SQL 语句的参数，可以为上面解析后的事件的属性（如 “request” 等），也可以为一个格式化字符串( “%host - %message” )</li>
+</ul>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>output {
+    if [request] == "/10" {
+       if [verb] == "POST" {
+               jdbc {
+                  driver_class =&gt; "com.mysql.jdbc.Driver"
+                  connection_string =&gt; "jdbc:mysql://localhost:3306/nginx_access_log?user=root&amp;password="
+                  statement =&gt; ["REPLACE INTO access_log (clientip, method, url) values(?,?, ?)","clientip","verb", "request"]
+          }
+       }
+    }
+}
+</code></pre></div></div>
+
+<h2 id="测试效果">测试效果</h2>
+
+<p>最后完成的配置如下</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>input {
+  file {
+    path =&gt; ["/var/log/nginx/access.log"]
+    type =&gt; "nginx"
+  }
+}
+
+filter {
+ grok {
+   match =&gt; [ "message" , "%{COMBINEDAPACHELOG}+%{GREEDYDATA:extra_fields}"]
+   overwrite =&gt; [ "message" ]
+ }
+}
+
+output {
+    if [request] == "/10" {
+       if [verb] == "POST" {
+               jdbc {
+                  driver_class =&gt; "com.mysql.jdbc.Driver"
+                  connection_string =&gt; "jdbc:mysql://localhost:3306/nginx_access_log?user=root&amp;password="
+                  statement =&gt; ["REPLACE INTO access_log (clientip, method, url) values(?,?, ?)","clientip","verb", "request"]
+          }
+       }
+    }
+}
+</code></pre></div></div>
+
+<p>使用上面的配置文件启动 logstash 后，手动触发写 mysql 操作。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ curl -XPOST 127.0.0.1/10
+</code></pre></div></div>
+
+<p>登录 mysql 可以查看到测试结果</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ mysql -uroot nginx_access_log
+</code></pre></div></div>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mysql&gt; select * from access_log;
++----+-----------+--------+------+---------------------+---------------------+
+| id | clientip  | method | url  | insert_time         | update_time         |
++----+-----------+--------+------+---------------------+---------------------+
+|  1 | 127.0.0.1 | POST   | /10  | 2018-10-27 20:56:45 | 2018-10-27 20:56:45 |
++----+-----------+--------+------+---------------------+---------------------+
+1 row in set (0.00 sec)
+</code></pre></div></div>
+
+  </article>
+
+</div>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function () {
+        var s = document.createElement('script'); s.async = true;
+        s.type = 'text/javascript';
+        s.src = '//' + disqus_shortname + '.disqus.com/count.js';
+        (document.getElementsByTagName('HEAD')[0] || document.getElementsByTagName('BODY')[0]).appendChild(s);
+    }());
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/raphael/2.1.0/raphael-min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+<script src="https://flowchart.js.org/flowchart-latest.js"></script>
+<script src="/js/highlight.min.js"></script>
+<script src="/js/toc.js"></script>
+<script src="/js/qrcode.min.js"></script>
+<script>
+if (!String.prototype.format) {
+    String.prototype.format = function() {
+        var args = arguments;
+        return this.replace(/{(\d+)}/g, function(match, number) { 
+            return typeof args[number] != 'undefined'
+                ? args[number]
+                : match
+            ;
+        });
+    };
+}
+
+$('pre code').each(function(i, block) {
+    hljs.highlightBlock(block);
+});
+
+$('.language-flow').each(function(i, block) {
+    console.log(block);
+    code = $(this).text();
+    diagram = flowchart.parse(code);
+    canvas_id = 'flow'+ i;
+    console.log(canvas_id);
+    temp = "<div id='{0}'> </div>".format(canvas_id);
+    console.log(temp);
+    $(this).html(temp);
+    diagram.drawSVG(canvas_id, {
+        'x': 0,
+        'y': 0,
+        'line-width': 3,
+        'line-length': 50,
+        'text-margin': 10,
+        'font-size': 14,
+    });	
+});
+
+$('#toc').toc({
+    noBackToTopLinks: true,
+    listType: 'ul',
+    title: 'TOC',
+});
+
+var url = location.href;
+console.log(url);
+var qrcode = new QRCode("qrcode", {
+    text: url,
+    width: 128,
+    height: 128,
+    colorDark : "#000000",
+    colorLight : "#ffffff",
+    correctLevel : QRCode.CorrectLevel.H
+});
+
+$(document).ready(function () {
+    $('#show_qrcode').on('mouseenter', function () {
+        $('#qrcode').show();
+        $(this).css({
+            "text-decoration": "underline"
+        });
+    }).on('mouseleave', function () {
+        $('#qrcode').hide();
+        $(this).css({
+            "text-decoration": ''
+        });
+    });;
+});
+</script>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col  footer-col-1">
+        <ul class="contact-list">
+	  <li>
+          <li><a href="mailto:mithrilwoodrat@gmail.com">mithrilwoodrat@gmail.com</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col  footer-col-2">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/Mithrilwoodrat">
+              <span class="icon  icon--github">
+                <svg viewBox="0 0 16 16">
+                  <path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/>
+                </svg>
+              </span>
+              <span class="username">Mithrilwoodrat</span> 
+            </a>
+          </li>
+          
+        </ul>
+      </div>
+  </div>
+</footer>
+
+<script>
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-66599686-1', 'auto');
+  ga('send', 'pageview');
+
+</script>
+</body>
+</html>

@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>
+    Golang踩坑总结
+    </title>
+  <link type="application/atom+xml" rel="alternate" href="/feed.xml" title="虚实" />
+  
+  <style>
+  table{
+    border-left:1px solid #000000;border-top:1px solid #000000;
+    width: 100%;
+    word-wrap:break-word; word-break:break-all;
+  }
+  table th{
+  text-align:center;
+  }
+  table th,td{
+    border-right:1px solid #000000;border-bottom:1px solid #000000;
+  }
+  </style>
+
+  <meta name="description" content="Golang踩坑总结">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/toc.css">
+  <link rel="canonical" href="/2019/06/17/golang%E8%B8%A9%E5%9D%91%E6%80%BB%E7%BB%93/">
+  <link rel="alternate" type="application/rss+xml" title="虚实" href="/feed.xml" />
+  <link rel="stylesheet" href="/css/highlight.min.css">
+  <link href="//cdn.staticfile.org/font-awesome/3.2.1/css/font-awesome.min.css" rel="stylesheet"media="all">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+    <div>
+      <a class="site-title" href="/">虚实</a>
+      <div class="site-pages">
+		<a class="site-page" href="/archive/">归档</a>
+		<a class="site-page" href="/categories/">分类</a>
+		<a class="site-page" href="/about/">关于</a>
+		<a class="site-page" href="/friend-links/">友情链接</a>
+        <a class="site-page" href="/recommends/">推荐</a>
+      </div>
+      <p class="site-sub-title">记录下折腾和学习的过程</p>
+    </div>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <div class="post">
+
+  <header class="post-header">
+    <h1 class="post-title">Golang踩坑总结</h1>
+    <p class="post-meta">Jun 17, 2019 • admin</p>
+
+	<p class="post-meta"> categories :   <a href="/categories/#golang"> golang </a>  </p>
+    <div id="show_qrcode">
+        <a>扫描二维码</a>
+        <div id="qrcode" style="display:none;position:absolute;z-index:1"></div>
+    </div>
+  </header>
+  <div class="nav">
+      <div id="toc" class="toc"></div>
+  </div>
+  <article class="post-content">
+    <h1 id="golang踩坑总结">Golang踩坑总结</h1>
+
+<p>从 15 年起，陆陆续续得写了几年 Go ，但大多都是小工具和一些简单的服务。最近一段时间用 Golang 多了一些，有了一些经验类的东西可以记录和分享。包括下面几点</p>
+
+<ul>
+  <li>Golang 项目结构和 Makefile 的组织</li>
+  <li>Golang 的依赖管理</li>
+  <li>Golang 的调试(使用 dlv 工具)</li>
+  <li>Golang 服务的 profile</li>
+  <li>CGo 的编写和使用</li>
+  <li>Golang 标准库的使用中的常见问题
+    <ul>
+      <li><a href="/2019/06/17/Golang%E6%97%A5%E6%9C%9F%E5%A4%84%E7%90%86/">Golang 中格式化日期字符串</a></li>
+      <li>Golang HTTP Client 的使用和常见问题</li>
+    </ul>
+  </li>
+</ul>
+
+<h2 id="项目结构和-makefile">项目结构和 Makefile</h2>
+
+<p>一个 Golang 工程的典型结构如下， 将 GOPATH 设置为 pwd，编译时可以自动去 <code class="language-plaintext highlighter-rouge">src/&lt;ProjectName&gt;</code> 寻找代码，其他的内部库函数等也可以放到 src 下，并且依赖可以都放到 src/vendor 目录中。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>.
+├── LICENSE
+├── Makefile
+├── README.md
+├── bin
+├── log
+├── conf
+│   ├── conf.toml
+├── src
+│   ├── LibName
+│   ├── ProjectName
+│   │   └── main.go
+│   └── vendor
+</code></pre></div></div>
+
+<p>Makefile 中指定 GOPATH 为当前路径，然后将生成的 bin 文件输出到 bin 目录中。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>all: build
+
+GOPATH=${CURDIR}
+BINARY=&lt;PackageName&gt;
+PackageName=&lt;PackageName&gt;
+CONF=./conf/
+LOG=./log
+
+.PHONY: build build_linux64 clean package
+	
+build:
+	GOPATH=${GoPATH} go build -o bin/${BINARY} ${PackageName}
+
+build_linux64:
+	GOPATH=${GoPATH} GoARCH=amd64 GoOS=linux go build -o bin/${BINARY} ${PackageName}
+
+debug_build: 
+	GOARCH=amd64 GoOS=linux go build -a -race -gcflags "all=-N -l" -ldflags '-extldflags "-static"' ${PackageName}
+
+clean:
+	rm -f *.tar.gz ${BINARY}
+	rm -f *.tar.gz ${LOG}/*
+
+package: build_linux64
+	rm -f *.tar.gz ${LOG}/*
+	zip ${PackageName}.zip bin/${BINARY} conf/example.conf
+</code></pre></div></div>
+
+<h2 id="依赖管理">依赖管理</h2>
+
+<p>旧版本的 go 中可以使用 <a href="https://github.com/FiloSottile/gvt">gvt</a> 工具来管理依赖。
+使用 <code class="language-plaintext highlighter-rouge">go get https://github.com/FiloSottile/gvt</code> 安装 gvt。(需要 <code class="language-plaintext highlighter-rouge">export PATH=$PATH:$GOPATH/bin</code>)</p>
+
+<p>然后在根目录下</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>export GOPATH=`pwd` 
+</code></pre></div></div>
+
+<p>再到 src 目录下执行 <code class="language-plaintext highlighter-rouge">gvt fetch -precaire &lt;package name&gt;</code></p>
+
+<p>下载的依赖和其版本会记录到 <code class="language-plaintext highlighter-rouge">manifest</code> 文件中，源文件则会存储在 src/vendor 中。</p>
+
+<p>Go 1.11、1.12及后续版本会开始支持 <a href="https://blog.golang.org/using-go-modules">Go Modules</a>。</p>
+
+<p>在已存在的项目中，只需要先</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cd src/&lt;PackageName&gt;
+</code></pre></div></div>
+
+<p>然后执行</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Go111MODULE=on go mod init
+</code></pre></div></div>
+
+<p>即可初始化 go module，生成 go.mod 文件。</p>
+
+<p>再执行 <code class="language-plaintext highlighter-rouge">GO111MODULE=on go build ./...</code> 即可自动下载对应的依赖，下载的依赖会存储在 <code class="language-plaintext highlighter-rouge">$GOPATH/pkg/mod</code> 中，
+其版本会写入 go.mod 中。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>module MithrilSSHTunnel
+
+require (
+        github.com/BurntSushi/toml v0.3.1
+        golang.org/x/crypto v0.0.0-20190617133340-57b3e21c3d56
+)
+</code></pre></div></div>
+
+<h2 id="go-113-project-layout">Go 1.13 project-layout</h2>
+
+<p><a href="https://github.com/golang-standards/project-layout">https://github.com/golang-standards/project-layout</a></p>
+
+<h2 id="cgo">CGo</h2>
+
+<p>Golang 支持和 C 代码交互，可以在 Go 源码中使用特殊的语法编写 C 代码然后一起打包，也可以使 Go 代码和 C 动态链接库通过 ABI 进行交互。参考 https://golang.org/cmd/cgo/。</p>
+
+<h3 id="go-源码中使用-c">Go 源码中使用 C</h3>
+<p>Go 源码中使用 C 代码的示例如下</p>
+
+<p>test.go</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>package main
+
+// #include &lt;stdio.h&gt;
+// #include &lt;stdlib.h&gt;
+// void hello(char * s)
+// {
+//     printf("%s", s);
+// }
+import "C"
+import "unsafe"
+
+func main() {
+        cs := C.CString("Hello World")
+        C.hello(cs)
+        C.free(unsafe.Pointer(cs))
+}
+</code></pre></div></div>
+
+<p>go run test.go  即可输出 <code class="language-plaintext highlighter-rouge">Hello World</code>。</p>
+
+<p>使用 <code class="language-plaintext highlighter-rouge">go tool cgo -debug-gcc test.go</code> 可以得到中间代码和对象，在当前目录的 <code class="language-plaintext highlighter-rouge">_obj</code> 目录下。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ ls _obj
+_cgo_.o         _cgo_export.h   _cgo_gotypes.go test.cgo1.go
+_cgo_export.c   _cgo_flags      _cgo_main.c     test.cgo2.c
+</code></pre></div></div>
+
+<p>使用 readelf -s 可以看出 go build 编译后的文件中包含 hello 函数的代码和符号。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>readelf -s test |grep hello
+    71: 0000000000453630    22 FUNC    GLOBAL DEFAULT   15 hello
+  1381: 00000000004533a0   121 FUNC    LOCAL  DEFAULT   15 main._Cfunc_hello
+  1459: 0000000000453630    22 FUNC    GLOBAL DEFAULT   15 hello
+</code></pre></div></div>
+
+<h3 id="go-链接动态链接库">Go 链接动态链接库</h3>
+
+<p>在上面的 test.go 中，使用了 <code class="language-plaintext highlighter-rouge">stdlib.h</code>, <code class="language-plaintext highlighter-rouge">stdio.h</code> 等头文件，并使用了其中的 printf 和 free 函数，C 的标准库函数在 Linux 上位于 glibc 中，go 编译出的文件会通过 ABI 来调用。</p>
+
+<p>例如 free 函数，使用 readelf 查看符号可以看到 test 文件中引用了 GLIBC 中的 free 符号。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>1380: 0000000000453320   121 FUNC    LOCAL  DEFAULT   15 main._Cfunc_free
+1426: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND free@@GLIBC_2.2.5
+</code></pre></div></div>
+
+<p>除了和系统自带的 so 交互外，用户也可以将自己或第三方的 C 库和 Go 一起编译打包部署,即在 Makefile 中先编译 C 代码为 so 与 Go 的 bin 文件一起发布。</p>
+
+<h2 id="使用-dlv-调试-go-代码">使用 dlv 调试 Go 代码</h2>
+
+<p>在 Linux 上，Golang 虽然也是编译成 ELF 文件运行，但因为 Go 有其独特的运行时和调试信息，直接使用 GDB 调试有很多功能受限，具体可以参考 https://golang.org/doc/gdb 。</p>
+
+<p>由于上面的原因， Golang 团队开发了一个专门用于 Go 语言调试的工具，<a href="https://github.com/go-delve/delve">delve</a>。</p>
+
+<h3 id="安装">安装</h3>
+<p>dlv 的安装很简单，使用 <code class="language-plaintext highlighter-rouge">go get -u github.com/go-delve/delve/cmd/dlv</code> 并保证 <code class="language-plaintext highlighter-rouge">$GoPATH/bin</code> 在 <code class="language-plaintext highlighter-rouge">$PATH</code> 中即可。</p>
+
+<h3 id="命令行">命令行</h3>
+
+<ul>
+  <li>使用 <code class="language-plaintext highlighter-rouge">dlv attach &lt;pid&gt;</code> attach 到一个已在运行的 go 进程中。</li>
+  <li>使用 <code class="language-plaintext highlighter-rouge">dlv exec &lt;path&gt;</code> 拉起要 debug 的程序。</li>
+</ul>
+
+<h3 id="vars">Vars</h3>
+
+<p>vars 支持正则查找变量</p>
+
+<p>vars –v 查看详情</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(dlv) vars  &lt;ProjectName&gt;/&lt;PackagetName&gt;.&lt;VarName&gt;
+</code></pre></div></div>
+
+<p>Vars 不能查看结构体内容</p>
+
+<h3 id="print">print</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(dlv) print  "&lt;ProjectName&gt;r/&lt;PackagetName&gt;".&lt;VarName&gt;.&lt;StructField&gt; 
+
+*sync.Map { 
+
+        mu: sync.Mutex {state: 0, sema: 0}, 
+
+        read: sync/atomic.Value { 
+
+                v: interface {}(sync.readOnly) *(*interface {})(0xc42007f4a8),}, 
+
+        dirty: map[interface {}]*sync.entry [ 
+
+                *(*interface {})(0xc470b30008): *(*sync.entry)(0xc4200960e0), 
+
+                *(*interface {})(0xc470b30018): *(*sync.entry)(0xc420096110), 
+
+                *(*interface {})(0xc470b30028): *(*sync.entry)(0xc420096120), 
+
+                *(*interface {})(0xc470b30038): *(*sync.entry)(0xc420096130), 
+
+                *(*interface {})(0xc470b30048): *(*sync.entry)(0xc420096148), 
+
+                *(*interface {})(0xc470b30058): *(*sync.entry)(0xc420096168), 
+
+                *(*interface {})(0xc470b300d8): *(*sync.entry)(0xc4200960d8), 
+
+                *(*interface {})(0xc470b300e8): *(*sync.entry)(0xc4200960e8), 
+
+                *(*interface {})(0xc470b300f8): *(*sync.entry)(0xc420096108), 
+
+                *(*interface {})(0xc470b30108): *(*sync.entry)(0xc420096138), 
+
+                *(*interface {})(0xc470b30118): *(*sync.entry)(0xc420096158), 
+
+        ], 
+
+        misses: 0,} 
+</code></pre></div></div>
+
+<p>Print 可以支持包路径，并且查看包中结构体等变量的内容。</p>
+
+<p>如 sync map 可以使用 .dirty 查看内容</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>
+(dlv) print  "&lt;ProjectName&gt;r/&lt;PackagetName&gt;".&lt;VarName&gt;.&lt;StructField&gt;.dirty 
+
+map[interface {}]*sync.entry [ 
+        "baidu.com": *{p: unsafe.Pointer(0xc470b34410)}
+] 
+
+</code></pre></div></div>
+
+<h2 id="set-breakpoints">Set breakpoints</h2>
+
+<p><code class="language-plaintext highlighter-rouge">b "&lt;ProjectName&gt;r/&lt;PackagetName&gt;".&lt;VarName&gt;</code></p>
+
+<h3 id="set-break-in-struct-function">set break in struct function</h3>
+
+<p><code class="language-plaintext highlighter-rouge">&lt;ProjectName&gt;/&lt;PackagetName&gt;".(*&lt;StructName&gt;).&lt;FunctionName&gt;</code></p>
+
+<h2 id="golang-服务的-profile">Golang 服务的 profile</h2>
+
+<p>Go 提供了 profile 工具，可以很方便的对已经编写好的 Go 服务程序进行 profile。参考 <a href="https://blog.golang.org/profiling-go-programs">https://blog.golang.org/profiling-go-programs</a>。</p>
+
+<p>只需要在代码中添加几个 http 接口，即可在服务运行中拿到实时的性能数据，并且对服务本身的性能影响可以忽略不计。</p>
+
+<p>参考 <a href="https://artem.krylysov.com/blog/2017/03/13/profiling-and-optimizing-go-web-applications/">https://artem.krylysov.com/blog/2017/03/13/profiling-and-optimizing-go-web-applications/</a></p>
+
+<p>添加如下的 http 接口：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>DEBUG PROFILE
+http.HandleFunc("/api/v1/debug/pprof/", pprof.Index)
+http.HandleFunc("/api/v1/debug/pprof/cmdline", pprof.Cmdline)
+http.HandleFunc("/api/v1/debug/pprof/profile", pprof.Profile)
+http.HandleFunc("/api/v1/debug/pprof/symbol", pprof.Symbol)
+http.HandleFunc("/api/v1/debug/pprof/trace", pprof.Trace)
+http.HandleFunc("/api/test/",enforceJSONHandler(sadata.))
+</code></pre></div></div>
+
+<p>使用 apache bench 对业务接口进行压力测试，同时在本地使用 <code class="language-plaintext highlighter-rouge">go tool pprof http://&lt;remoteip&gt;:&lt;remote_port&gt;/api/v1/debug/pprof/profile</code> 即可链接上远程的 profile 接口，拉取 profile 信息。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ab -k  -p body.txt -T application/json -c 1000 -n 20000 http://&lt;host/api/v1/
+</code></pre></div></div>
+
+<p>在 <code class="language-plaintext highlighter-rouge">pprof</code> 命令行中使用 <code class="language-plaintext highlighter-rouge">top</code> 命令可以查看 cpu 使用占比，使用 <code class="language-plaintext highlighter-rouge">web</code> 命令则会生成 svg 调用图，可以很方便的分析性能瓶颈。</p>
+
+<h2 id="golang-标准库的使用中的常见问题">Golang 标准库的使用中的常见问题</h2>
+
+<h3 id="golang-http-client-的使用和常见问题">Golang HTTP Client 的使用和常见问题</h3>
+
+<p>在使用 Go 标准的 “net/http” 库中的 http client 时，可以自定义 http client 的参数，默认的 DefaultClient 没有超时时间。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>HTTPClient = &amp;http.Client{
+  Transport: &amp;http.Transport{
+    DialContext: (&amp;net.Dialer{
+      Timeout:   10 * time.Second,
+      KeepAlive: 30 * time.Second,
+    }).DialContext,
+    TLSHandshakeTimeout: 10 * time.Second,
+    MaxIdleConns:        1000,
+    MaxIdleConnsPerHost: 1000,
+    IdleConnTimeout:     time.Duration(90) * time.Second,
+  },
+  Timeout: 2 * time.Second,
+}
+</code></pre></div></div>
+
+<p>使用 http client 发送 post 请求并解析返回的 json 示例代码如下:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>func DoPost(url string) (map[string]interface{}, error) {
+  req := make(map[string]interface{})
+  body := make(map[string]interface{})
+	req_body, _ := json.Marshal(req)
+	reader := bytes.NewReader(req_body)
+	resp, err := HTTPClient.Post(url, "Content-Type: Application/json", reader)
+	if err != nil {
+		fmt.Printf("http req error %s", err.Error())
+		return body, err
+	}
+	if resp.StatusCode != 200 {
+		mess := fmt.Sprintf("http status %d", resp.StatusCode)
+		return body, errors.New(mess)
+	}
+	defer resp.Body.Close()
+	respBody, err := ioutil.ReadAll(resp.Body)
+
+	if err != nil {
+		mess := fmt.Sprintf("Read body error %s", err.Error())
+		logdef.LogError(mess)
+		return body, errors.New(mess)
+  }
+  
+	err = json.Unmarshal(respBody, &amp;body)
+	if err != nil {
+		mess := fmt.Sprintf("Json parse error %s", err.Error())
+		return body, errors.New(mess)
+  }
+  return body, nil
+}
+</code></pre></div></div>
+
+<p>使用 http client 下载数据时，需要注意服务器有没有开启 gzip 压缩功能，如果开启了 gzip 压缩，则返回的 http respsone 中可能是分块传输的，不会有 Content-Length 字段，这时读取 <code class="language-plaintext highlighter-rouge">Get</code> 返回的 <code class="language-plaintext highlighter-rouge">Response</code> 中的 <code class="language-plaintext highlighter-rouge">ContentLength</code> 会返回 -1。</p>
+
+<p>参考 <a href="https://zh.wikipedia.org/wiki/%E5%88%86%E5%9D%97%E4%BC%A0%E8%BE%93%E7%BC%96%E7%A0%81">wiki</a>，返回的 HTTP Response 头如下:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>HTTP/1.1 200 OK
+Content-Type: text/plain
+Transfer-Encoding: chunked
+</code></pre></div></div>
+
+<p>下载文件时，服务器可能会返回文件名，位于 Response Header 的 <code class="language-plaintext highlighter-rouge">Content-Disposition</code> 字段中，例如 <code class="language-plaintext highlighter-rouge">Content-Disposition: attachment; filename="filename.jpg"</code>。具体的定义可以参考 <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition">MDN</a></p>
+
+<p>处理这种情况的示例代码如下:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>func HttpReqFile(url string, downloadPath string) (string, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return "", err
+	}
+	if resp.StatusCode != 200 {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	length := resp.ContentLength
+	logdef.LogInfof("rsp length:%v", length)
+	encryContent := new(ServerReplayAll)
+
+	filename := "DefaultFileName"
+	filepath := fmt.Sprintf("%s%s", downloadPath, filename)
+
+	ContentDisposition := resp.Header.Get("Content-Disposition")
+	if len(ContentDisposition) &gt; 0 {
+		_, params, err := mime.ParseMediaType(ContentDisposition)
+		if err != nil {
+			fmt.Println("Parse Content-Disposition Failed")
+		} else {
+			if filename, ok := params["filename"]; ok {
+				filepath = fmt.Sprintf("%s%s", downloadPath, filename)
+			} else {
+				fmt.Println("Parse Content-Disposition Failed No FileName")
+			}
+		}
+	}
+
+	if length &gt; 0 {
+		respBody := make([]byte, length, length)
+		n, err := io.ReadFull(resp.Body, respBody)
+		if err != nil {
+			return "", err
+		}
+		if ioutil.WriteFile(filepath, respBody, 0644) == nil {
+			fmt.Println("wirte success ", filepath)
+		} else {
+			fmt.Println("wirte failure ", filepath)
+			filepath = ""
+		}
+	} else if length == -1 {
+		fmt.Println("resp.ContentLength is Unkown(-1)")
+		out, err := os.Create(filepath)
+		if err != nil {
+			fmt.Printf("create file failure %v: err:%v", filepath, err)
+			filepath = ""
+		}
+		defer out.Close()
+		wlen, err := io.Copy(out, resp.Body)
+		if err != nil {
+			fmt.Printf("wirte failure ", filepath)
+			filepath = ""
+		}
+		fmt.Printf("Write FIle Length:%v", wlen)
+	} else if length == 0 {
+		fmt.Println("resp.ContentLength is 0!")
+		return "", errors.New("ContentLength is 0")
+  }
+  return filepath, nil
+}
+</code></pre></div></div>
+
+<p>还有一个问题是，HTTPClient 设置了 Transport 配置后，不会读取默认的环境遍历中的代理配置。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>type Transport struct {
+	// Proxy specifies a function to return a proxy for a given
+	// Request. If the function returns a non-nil error, the
+	// request is aborted with the provided error.
+	//
+	// The proxy type is determined by the URL scheme. "http",
+	// "https", and "socks5" are supported. If the scheme is empty,
+	// "http" is assumed.
+	//
+	// If Proxy is nil or returns a nil *URL, no proxy is used.
+	Proxy func(*Request) (*url.URL, error)
+}
+</code></pre></div></div>
+
+<p>可以在创建 HTTPClient 时在 Transport 中指定 Proxy 为默认的 http.ProxyFromEnvironment</p>
+
+<p>HTTPClient = &amp;http.Client{
+	Transport: &amp;http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+	},
+	Timeout: time.Duration(5 * time.Second),
+}</p>
+
+<h3 id="golang-http-client-multipartform-data-上传文件">Golang HTTP Client multipart/form-data 上传文件</h3>
+
+<p>使用 <code class="language-plaintext highlighter-rouge">multipart.NewWriter</code> 来创建表单数据, <code class="language-plaintext highlighter-rouge">NewWriter</code> 会随机创建一个 Boundary，浏览器中会自动创建这个字段。如果要指定 Boundary 则需要在创建 <code class="language-plaintext highlighter-rouge">NewWriter</code> 后调用 SetBoundary。</p>
+
+<p><code class="language-plaintext highlighter-rouge">CreateFormFile</code> 函数封装了 <code class="language-plaintext highlighter-rouge">CreatePart</code>，会默认创建 <code class="language-plaintext highlighter-rouge">"Content-Type", "application/octet-stream"</code> 的 form data。</p>
+
+<p>发送 POST 请求前，需要使用 <code class="language-plaintext highlighter-rouge">request.Header.Set("Content-Type", w.FormDataContentType())</code> 设置 Header 的 Content-Type，
+这里如果不使用 SetBoundary 则会是随机 <code class="language-plaintext highlighter-rouge">boundary</code>。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>func NewWriter(w io.Writer) *Writer {
+	return &amp;Writer{
+		w:        w,
+		boundary: randomBoundary(),
+	}
+}
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">NewWriter</code> 需要在发送请求前手动调用 Close，因为最后一个 <code class="language-plaintext highlighter-rouge">boundary</code> 的末尾会多两个横线 <code class="language-plaintext highlighter-rouge">--</code> 来标识结束，会在调用 Close 时添加。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>func uploadFile(fpath string) error {
+	var body bytes.Buffer
+	w := multipart.NewWriter(&amp;body)
+	w.SetBoundary("---011000010111000001101001")
+	err := w.WriteField("a", "field_a")
+	if err != nil {
+		mess := fmt.Sprintf("WriteField error %s", err.Error())
+		glog.Error(mess)
+		return err
+	}
+
+	file, err := os.Open(fpath)
+
+	if err != nil {
+		glog.Error(err)
+		return err
+	}
+
+	defer file.Close()
+
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition",
+		fmt.Sprintf(`form-data; name="%s"; filename="%s"`,
+			escapeQuotes("image"), escapeQuotes(filepath.Base(file.Name()))))
+	h.Set("Content-Type", "image/png")
+	part, err := w.CreatePart(h)
+
+	//part, err := w.CreateFormFile("image", filepath.Base(file.Name()))
+	if err != nil {
+		glog.Error(err)
+		return err
+	}
+
+	io.Copy(part, file)
+
+	w.Close()
+
+	var uploadRaspBody uploadResp
+	request, err := http.NewRequest("POST", uploadAPI, &amp;body)
+	if err != nil {
+		mess := fmt.Sprintf("Create Request error %s", err.Error())
+		glog.Error(mess)
+		return err
+	}
+	//request.Header.Set("Content-Type", "multipart/form-data; boundary=---011000010111000001101001")
+	request.Header.Set("Content-Type", w.FormDataContentType())
+
+	resp, err := HTTPClient.Do(request)
+	if err != nil {
+		mess := fmt.Sprintf("http req error %s", err.Error())
+		glog.Error(mess)
+		return err
+	}
+	defer resp.Body.Close()
+	respBody, err := ioutil.ReadAll(resp.Body)
+
+	if err != nil {
+		mess := fmt.Sprintf("Read body error %s", err.Error())
+		glog.Error(mess)
+		return errors.New(mess)
+	}
+
+	if resp.StatusCode != 200 {
+		mess := fmt.Sprintf("http status %d", resp.StatusCode)
+		glog.Error("Resp Body : %s", string(respBody))
+		glog.Error(mess)
+		return errors.New(mess)
+	}
+
+	err = json.Unmarshal(respBody, &amp;uploadRaspBody)
+	if err != nil {
+		mess := fmt.Sprintf("Json parse error %s", err.Error())
+		return errors.New(mess)
+	}
+	fmt.Println(uploadRaspBody)
+	return nil
+}
+</code></pre></div></div>
+
+<p>最后发送的实际请求如下</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>POST /uploadurl/ HTTP/1.1
+Host: uploadserver
+User-Agent: Go-http-client/1.1
+Content-Length: 867216
+Content-Type: multipart/form-data; boundary=---011000010111000001101001
+Accept-Encoding: gzip
+
+-----011000010111000001101001
+Content-Disposition: form-data; name="a"
+
+field_a
+-----011000010111000001101001
+Content-Disposition: form-data; name="b"
+
+field_b
+-----011000010111000001101001
+Content-Disposition: form-data; name="image"; filename="test.png"
+Content-Type: image/png
+
+PNG
+&lt;Content&gt;
+-----011000010111000001101001--
+</code></pre></div></div>
+
+<p>参考 RFC1867(<a href="https://tools.ietf.org/html/rfc1867">https://tools.ietf.org/html/rfc1867</a>)</p>
+
+  </article>
+
+</div>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function () {
+        var s = document.createElement('script'); s.async = true;
+        s.type = 'text/javascript';
+        s.src = '//' + disqus_shortname + '.disqus.com/count.js';
+        (document.getElementsByTagName('HEAD')[0] || document.getElementsByTagName('BODY')[0]).appendChild(s);
+    }());
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/raphael/2.1.0/raphael-min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+<script src="https://flowchart.js.org/flowchart-latest.js"></script>
+<script src="/js/highlight.min.js"></script>
+<script src="/js/toc.js"></script>
+<script src="/js/qrcode.min.js"></script>
+<script>
+if (!String.prototype.format) {
+    String.prototype.format = function() {
+        var args = arguments;
+        return this.replace(/{(\d+)}/g, function(match, number) { 
+            return typeof args[number] != 'undefined'
+                ? args[number]
+                : match
+            ;
+        });
+    };
+}
+
+$('pre code').each(function(i, block) {
+    hljs.highlightBlock(block);
+});
+
+$('.language-flow').each(function(i, block) {
+    console.log(block);
+    code = $(this).text();
+    diagram = flowchart.parse(code);
+    canvas_id = 'flow'+ i;
+    console.log(canvas_id);
+    temp = "<div id='{0}'> </div>".format(canvas_id);
+    console.log(temp);
+    $(this).html(temp);
+    diagram.drawSVG(canvas_id, {
+        'x': 0,
+        'y': 0,
+        'line-width': 3,
+        'line-length': 50,
+        'text-margin': 10,
+        'font-size': 14,
+    });	
+});
+
+$('#toc').toc({
+    noBackToTopLinks: true,
+    listType: 'ul',
+    title: 'TOC',
+});
+
+var url = location.href;
+console.log(url);
+var qrcode = new QRCode("qrcode", {
+    text: url,
+    width: 128,
+    height: 128,
+    colorDark : "#000000",
+    colorLight : "#ffffff",
+    correctLevel : QRCode.CorrectLevel.H
+});
+
+$(document).ready(function () {
+    $('#show_qrcode').on('mouseenter', function () {
+        $('#qrcode').show();
+        $(this).css({
+            "text-decoration": "underline"
+        });
+    }).on('mouseleave', function () {
+        $('#qrcode').hide();
+        $(this).css({
+            "text-decoration": ''
+        });
+    });;
+});
+</script>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col  footer-col-1">
+        <ul class="contact-list">
+	  <li>
+          <li><a href="mailto:mithrilwoodrat@gmail.com">mithrilwoodrat@gmail.com</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col  footer-col-2">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/Mithrilwoodrat">
+              <span class="icon  icon--github">
+                <svg viewBox="0 0 16 16">
+                  <path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/>
+                </svg>
+              </span>
+              <span class="username">Mithrilwoodrat</span> 
+            </a>
+          </li>
+          
+        </ul>
+      </div>
+  </div>
+</footer>
+
+<script>
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-66599686-1', 'auto');
+  ga('send', 'pageview');
+
+</script>
+</body>
+</html>

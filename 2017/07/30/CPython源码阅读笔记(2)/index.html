@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>
+    CPython源码阅读笔记(2)
+    </title>
+  <link type="application/atom+xml" rel="alternate" href="/feed.xml" title="虚实" />
+  
+  <style>
+  table{
+    border-left:1px solid #000000;border-top:1px solid #000000;
+    width: 100%;
+    word-wrap:break-word; word-break:break-all;
+  }
+  table th{
+  text-align:center;
+  }
+  table th,td{
+    border-right:1px solid #000000;border-bottom:1px solid #000000;
+  }
+  </style>
+
+  <meta name="description" content="PyObjectCPython 中基本的数据结构是 Object，所有的 Python 对象都可以用 PyObject * 来访问，CPython 中通过 Object 手动实现了对象系统。">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/toc.css">
+  <link rel="canonical" href="/2017/07/30/CPython%E6%BA%90%E7%A0%81%E9%98%85%E8%AF%BB%E7%AC%94%E8%AE%B0%282%29/">
+  <link rel="alternate" type="application/rss+xml" title="虚实" href="/feed.xml" />
+  <link rel="stylesheet" href="/css/highlight.min.css">
+  <link href="//cdn.staticfile.org/font-awesome/3.2.1/css/font-awesome.min.css" rel="stylesheet"media="all">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+    <div>
+      <a class="site-title" href="/">虚实</a>
+      <div class="site-pages">
+		<a class="site-page" href="/archive/">归档</a>
+		<a class="site-page" href="/categories/">分类</a>
+		<a class="site-page" href="/about/">关于</a>
+		<a class="site-page" href="/friend-links/">友情链接</a>
+        <a class="site-page" href="/recommends/">推荐</a>
+      </div>
+      <p class="site-sub-title">记录下折腾和学习的过程</p>
+    </div>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <div class="post">
+
+  <header class="post-header">
+    <h1 class="post-title">CPython源码阅读笔记(2)</h1>
+    <p class="post-meta">Jul 30, 2017 • admin</p>
+
+	<p class="post-meta"> categories :   <a href="/categories/#python"> python </a>  </p>
+    <div id="show_qrcode">
+        <a>扫描二维码</a>
+        <div id="qrcode" style="display:none;position:absolute;z-index:1"></div>
+    </div>
+  </header>
+  <div class="nav">
+      <div id="toc" class="toc"></div>
+  </div>
+  <article class="post-content">
+    <h2 id="pyobject">PyObject</h2>
+<p>CPython 中基本的数据结构是 Object，所有的 Python 对象都可以用<code class="language-plaintext highlighter-rouge"> PyObject * </code>来访问，CPython 中通过 Object 手动实现了对象系统。</p>
+
+<p>PyObject 定义于 <code class="language-plaintext highlighter-rouge">include/object.h</code> 中，可以看到，结构体里只是一个简单的 <code class="language-plaintext highlighter-rouge">PyObject_HEAD</code> 宏。</p>
+
+<pre><code class="language-C">typedef struct _object {
+    PyObject_HEAD
+} PyObject;
+</code></pre>
+
+<p>展开之后为</p>
+
+<pre><code class="language-C">typedef struct _object {
+    Py_ssize_t ob_refcnt;
+    struct _typeobject *ob_type;
+} PyObject;
+</code></pre>
+
+<p>其中 <code class="language-plaintext highlighter-rouge">ob_refcnt</code> 为 Python 对象的引用计数，用于实现自动的内存管理，当对象没有任何被引用的时候自动回收内存。</p>
+
+<p>继承 PyObject 的对象需要在结构体声明的第一项引用 PyObject_HEAD 的宏。</p>
+
+<p>例如 <code class="language-plaintext highlighter-rouge">PyIntObject</code></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>// include/intobject.h
+typedef struct {
+    PyObject_HEAD
+    long ob_ival;
+} PyIntObject;
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">PyIntObject</code> 第一行为 <code class="language-plaintext highlighter-rouge">PyObject_HEAD</code> 宏，也就是说和 <code class="language-plaintext highlighter-rouge">PyObject</code> 结构一致。 在将 <code class="language-plaintext highlighter-rouge">PyIntObject *</code> 转换为 <code class="language-plaintext highlighter-rouge">PyObject *</code> 时，会忽略掉下面多出的 <code class="language-plaintext highlighter-rouge">ob_ival</code> 字段，所以能成功的把 <code class="language-plaintext highlighter-rouge">PyIntObject</code> 转为 <code class="language-plaintext highlighter-rouge">PyObject *</code>。</p>
+
+<p>通过 <code class="language-plaintext highlighter-rouge">*ob_type</code> 可以确定对应的对象的类型，对象的类型创建后便不会更改。通过类型可以确定对应的对象中包含的数据。</p>
+
+<p>CPython 中的对象都需要通过特定的函数来创建，所有对象都需要申请内存来创建在堆中，不允许创建在栈上或者创建为全局变量(例如直接声明 PyIntObject i)，因为需要统一使用引用计数来管理内存。</p>
+
+<h3 id="py_increfop">Py_INCREF(op)</h3>
+
+<pre><code class="language-C">// include/object.h
+#define Py_INCREF(op) (                         \
+    _Py_INC_REFTOTAL  _Py_REF_DEBUG_COMMA       \
+    ((PyObject*)(op))-&gt;ob_refcnt++)
+</code></pre>
+
+<h3 id="py_decrefop">Py_DECREF(op)</h3>
+
+<p>使用 <code class="language-plaintext highlighter-rouge">do while</code> 将宏中的 if else 包裹起来是为了避免嵌套的 if else 中使用宏无法正确配对的问题。</p>
+
+<p><code class="language-plaintext highlighter-rouge">Py_DECREF</code> 对 Object 的引用计数 <code class="language-plaintext highlighter-rouge">ob_refcnt</code> 字段进行减一操作，若 <code class="language-plaintext highlighter-rouge">ob_refcnt</code> 为 0 则调用析构函数销毁对象。</p>
+
+<pre><code class="language-C">// include/object.h
+#define Py_DECREF(op)                                   \
+    do {                                                \
+        if (_Py_DEC_REFTOTAL  _Py_REF_DEBUG_COMMA       \
+        --((PyObject*)(op))-&gt;ob_refcnt != 0)            \
+            _Py_CHECK_REFCNT(op)                        \
+        else                                            \
+        _Py_Dealloc((PyObject *)(op));                  \
+    } while (0)
+</code></pre>
+
+<pre><code class="language-C">#define _Py_Dealloc(op) (                               \
+    _Py_INC_TPFREES(op) _Py_COUNT_ALLOCS_COMMA          \
+    (*Py_TYPE(op)-&gt;tp_dealloc)((PyObject *)(op)))
+</code></pre>
+
+<p>默认的析构函数为对应的 <code class="language-plaintext highlighter-rouge">_typeobject</code> 中<code class="language-plaintext highlighter-rouge">tp_dealloc</code>字段填写的函数指针。</p>
+
+<h3 id="pyvarobject">PyVarObject</h3>
+
+<p>PyVarObject 中包含一组 object，数量由 <code class="language-plaintext highlighter-rouge">ob_size</code> 指定。</p>
+
+<pre><code class="language-C">#define PyObject_VAR_HEAD               \
+    PyObject_HEAD                       \
+    Py_ssize_t ob_size; /* Number of items in variable part */
+
+typedef struct {
+    PyObject_VAR_HEAD
+} PyVarObject;
+</code></pre>
+
+<p>展开后为</p>
+
+<pre><code class="language-C">typedef struct {
+    Py_ssize_t ob_refcnt;
+    struct _typeobject *ob_type;
+    Py_ssize_t ob_size;
+} PyVarObject;
+</code></pre>
+
+<p>变长的对象需要在结构体声明的第一项引用 <code class="language-plaintext highlighter-rouge">PyObject_VAR_HEAD</code> 宏。</p>
+
+<h3 id="pytypeobject">PyTypeObject</h3>
+
+<p>继承 <code class="language-plaintext highlighter-rouge">PyObject</code> 的对象需要创建对应的 <code class="language-plaintext highlighter-rouge">PyTypeObject</code> 对象用于初始化，具体参考
+<a href="https://docs.python.org/2/extending/newtypes.html">https://docs.python.org/2/extending/newtypes.html</a> <a href="https://docs.python.org/2/c-api/typeobj.html">https://docs.python.org/2/c-api/typeobj.html</a>。</p>
+
+<p>通过给对应的字段填入不同的函数指针，结合对应的宏，实现运行时多态。</p>
+
+<pre><code class="language-C">typedef struct _typeobject {
+    PyObject_VAR_HEAD
+    const char *tp_name; /* For printing, in format "&lt;module&gt;.&lt;name&gt;" */
+    Py_ssize_t tp_basicsize, tp_itemsize; /* For allocation */
+
+    /* Methods to implement standard operations */
+
+    destructor tp_dealloc;
+    printfunc tp_print;
+    getattrfunc tp_getattr;
+    setattrfunc tp_setattr;
+    cmpfunc tp_compare;
+    reprfunc tp_repr;
+
+    /* Method suites for standard classes */
+
+    PyNumberMethods *tp_as_number;
+    PySequenceMethods *tp_as_sequence;
+    PyMappingMethods *tp_as_mapping;
+
+    /* More standard operations (here for binary compatibility) */
+
+    hashfunc tp_hash;
+    ternaryfunc tp_call;
+    reprfunc tp_str;
+    getattrofunc tp_getattro;
+    setattrofunc tp_setattro;
+
+    /* Functions to access object as input/output buffer */
+    PyBufferProcs *tp_as_buffer;
+
+    /* Flags to define presence of optional/expanded features */
+    long tp_flags;
+
+    const char *tp_doc; /* Documentation string */
+
+    /* Assigned meaning in release 2.0 */
+    /* call function for all accessible objects */
+    traverseproc tp_traverse;
+
+    /* delete references to contained objects */
+    inquiry tp_clear;
+
+    /* Assigned meaning in release 2.1 */
+    /* rich comparisons */
+    richcmpfunc tp_richcompare;
+
+    /* weak reference enabler */
+    Py_ssize_t tp_weaklistoffset;
+
+    /* Added in release 2.2 */
+    /* Iterators */
+    getiterfunc tp_iter;
+    iternextfunc tp_iternext;
+
+    /* Attribute descriptor and subclassing stuff */
+    struct PyMethodDef *tp_methods;
+    struct PyMemberDef *tp_members;
+    struct PyGetSetDef *tp_getset;
+    struct _typeobject *tp_base;
+    PyObject *tp_dict;
+    descrgetfunc tp_descr_get;
+    descrsetfunc tp_descr_set;
+    Py_ssize_t tp_dictoffset;
+    initproc tp_init;
+    allocfunc tp_alloc;
+    newfunc tp_new;
+    freefunc tp_free; /* Low-level free-memory routine */
+    inquiry tp_is_gc; /* For PyObject_IS_GC */
+    PyObject *tp_bases;
+    PyObject *tp_mro; /* method resolution order */
+    PyObject *tp_cache;
+    PyObject *tp_subclasses;
+    PyObject *tp_weaklist;
+    destructor tp_del;
+
+    /* Type attribute cache version tag. Added in version 2.6 */
+    unsigned int tp_version_tag;
+
+} PyTypeObject;
+</code></pre>
+
+<h2 id="pyintobject">PyIntObject</h2>
+
+<p><code class="language-plaintext highlighter-rouge">PyIntObject</code> 为 CPython 中存储普通整数的对象（使用 <code class="language-plaintext highlighter-rouge">long</code> 类型存储）。 为 Python 中的 <code class="language-plaintext highlighter-rouge">immutable object</code> （不可变对象），即 Python 中每次对变量赋新的整数值时，会申请新的 PyIntObject 对象并将变量指向这个新的对象（或者从 freelist 中找到已有的变量）。</p>
+
+<p>因为，使用 <code class="language-plaintext highlighter-rouge">long</code> 存储，<code class="language-plaintext highlighter-rouge">PyIntObject</code> 存储的整数上限为 <code class="language-plaintext highlighter-rouge">LONG_MAX</code> 即 <code class="language-plaintext highlighter-rouge">0x7fffffffffffffff</code>(在 Python2 中 可以用 <code class="language-plaintext highlighter-rouge">hex(sys.maxint)</code> 得到)。超过上限的数据将存储到 <code class="language-plaintext highlighter-rouge">PyLongObject</code> 中。</p>
+
+<p>PyIntObject 定义在 <code class="language-plaintext highlighter-rouge">include/intobject.h</code> 中。</p>
+
+<pre><code class="language-C">typedef struct {
+    PyObject_HEAD
+    long ob_ival;
+} PyIntObject;
+</code></pre>
+
+<h3 id="pyintobject-的创建">PyIntObject 的创建</h3>
+
+<p>PyIntObject 的创建可以通过 5 个 API 中的一个来完成， 其中最常用的为 <code class="language-plaintext highlighter-rouge">PyInt_FromLong</code>， CPython 内部创建新的 <code class="language-plaintext highlighter-rouge">PyIntObject</code> 也会通过该 API 。</p>
+
+<pre><code class="language-C">PyAPI_FUNC(PyObject *) PyInt_FromString(char*, char**, int);
+#ifdef Py_USING_UNICODE
+PyAPI_FUNC(PyObject *) PyInt_FromUnicode(Py_UNICODE*, Py_ssize_t, int);
+#endif
+PyAPI_FUNC(PyObject *) PyInt_FromLong(long);
+PyAPI_FUNC(PyObject *) PyInt_FromSize_t(size_t);
+PyAPI_FUNC(PyObject *) PyInt_FromSsize_t(Py_ssize_t);
+</code></pre>
+
+<pre><code class="language-C">// Objects/intobject.c PyInt_FromLong
+PyObject *
+PyInt_FromLong(long ival)
+{
+    register PyIntObject *v;
+#if NSMALLNEGINTS + NSMALLPOSINTS &gt; 0
+    if (-NSMALLNEGINTS &lt;= ival &amp;&amp; ival &lt; NSMALLPOSINTS) {
+        v = small_ints[ival + NSMALLNEGINTS];
+        Py_INCREF(v);
+        return (PyObject *) v;
+    }
+#endif
+    if (free_list == NULL) {
+        if ((free_list = fill_free_list()) == NULL)
+            return NULL;
+    }
+    /* Inline PyObject_New */
+    v = free_list;
+    free_list = (PyIntObject *)Py_TYPE(v);
+    PyObject_INIT(v, &amp;PyInt_Type);
+    v-&gt;ob_ival = ival;
+    return (PyObject *) v;
+}
+</code></pre>
+
+<p><code class="language-plaintext highlighter-rouge">PyInt_FromLong</code> 中可以看到， 定义了名为 <code class="language-plaintext highlighter-rouge">small_ints</code> 的全局数组，用于存储大于<code class="language-plaintext highlighter-rouge">-5</code>小于<code class="language-plaintext highlighter-rouge">257</code>的小整数，这些对象在解释器初始化后便申请完成，并且在 CPython 解释器整个生存周期里会一直存在。</p>
+
+<pre><code class="language-C">#ifndef NSMALLPOSINTS
+#define NSMALLPOSINTS           257
+#endif
+#ifndef NSMALLNEGINTS
+#define NSMALLNEGINTS           5
+#endif
+#if NSMALLNEGINTS + NSMALLPOSINTS &gt; 0
+/* References to small integers are saved in this array so that they
+   can be shared.
+   The integers that are saved are those in the range
+   -NSMALLNEGINTS (inclusive) to NSMALLPOSINTS (not inclusive).
+*/
+static PyIntObject *small_ints[NSMALLNEGINTS + NSMALLPOSINTS];
+</code></pre>
+
+<p>我们可以在 <code class="language-plaintext highlighter-rouge">if (free_list == NULL) {</code> 这一行下一个断点，运行 Python 输入 <code class="language-plaintext highlighter-rouge">a = 1</code>。
+单步执行可以看，到应该会直接跳过 <code class="language-plaintext highlighter-rouge">if (free_list == NULL) {</code>，执行 <code class="language-plaintext highlighter-rouge">/* Inline PyObject_New */</code> 注释下的那几行代码。</p>
+
+<pre><code class="language-C">    v = free_list; // 从空闲链表里获取一个申请好的 PyIntObject
+    free_list = (PyIntObject *)Py_TYPE(v); // 将指针指向空闲链表中下一个空闲的对象
+    PyObject_INIT(v, &amp;PyInt_Type); // 将 v-&gt;ob_type 设置为 `PyIntObject *` 并将 ob_refcnt 设置为 1
+    v-&gt;ob_ival = ival;
+    return (PyObject *) v;
+</code></pre>
+
+<h3 id="free_list-空闲链表">free_list 空闲链表</h3>
+
+<p>为了节省空间，空闲链表复用了 PyIntObject 中 <code class="language-plaintext highlighter-rouge">ob_type</code> 字段存放指向链表下一个元素的指针。</p>
+
+<p>当 free_list 用完之后，也就是 <code class="language-plaintext highlighter-rouge">free_list == NULL</code> 为 True 时，会调用 <code class="language-plaintext highlighter-rouge">fill_free_list</code> 申请新的空闲链表。</p>
+
+<p><code class="language-plaintext highlighter-rouge">*block_list</code> 和 <code class="language-plaintext highlighter-rouge">*free_list</code> 为 intobject.c 中的全局变量</p>
+
+<pre><code class="language-C">static PyIntBlock *block_list = NULL;  
+static PyIntObject *free_list = NULL;
+</code></pre>
+
+<p><code class="language-plaintext highlighter-rouge">PyIntBlock</code> 定义如下</p>
+
+<pre><code class="language-C">struct _intblock {
+    struct _intblock *next;
+    PyIntObject objects[N_INTOBJECTS];
+};
+typedef struct _intblock PyIntBlock;
+</code></pre>
+
+<p><code class="language-plaintext highlighter-rouge">PyIntBlock</code> 在内存中的布局大致如下</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>PyIntBlock                            PyIntBlock
+      +--------+                           +--------+
+      |        |                           |        |
+      |  Next  +---------------------------&gt;  Next  |
+      |        |                           |        |
+      +--------+                           +--------+
+      |        |                           |        |
+      |        |                           |        |
+      | objects|                           | objects|
+      |        |                           |        |
+      |        |                           |        |
+      +---+----+                           +---+----+
+          |                                    |
++---------v---+------------+         +---------v---+------------+
+|             |            |         |             |            |
+| PyIntObject |  ......    |         | PyIntObject |  ......    |
+|             |            |         |             |            |
+|             |            |         |             |            |
++-------------+------------+         +-------------+------------+
+   N_INTOBJECTS                         N_INTOBJECTS
+</code></pre></div></div>
+
+<p>gdb 中在该函数处设置断点， <code class="language-plaintext highlighter-rouge">p sizeof(PyIntBlock-&gt;objects)</code> 得到 960, <code class="language-plaintext highlighter-rouge">p sizeof(PyIntObject)</code> 得到 40， 所以在我的机器上 <code class="language-plaintext highlighter-rouge">N_INTOBJECTS</code> 等于 24，即空闲链表一次性申请 24 个 PyIntObject。</p>
+
+<pre><code class="language-C">static PyIntObject *
+fill_free_list(void)
+{
+    PyIntObject *p, *q;
+    /* Python's object allocator isn't appropriate for large blocks. */
+    p = (PyIntObject *) PyMem_MALLOC(sizeof(PyIntBlock));
+    if (p == NULL)
+        return (PyIntObject *) PyErr_NoMemory();
+    ((PyIntBlock *)p)-&gt;next = block_list;
+    block_list = (PyIntBlock *)p;
+    /* Link the int objects together, from rear to front, then return
+       the address of the last int object in the block. */
+    p = &amp;((PyIntBlock *)p)-&gt;objects[0];
+    q = p + N_INTOBJECTS;
+    while (--q &gt; p)
+        Py_TYPE(q) = (struct _typeobject *)(q-1);
+    Py_TYPE(q) = NULL;
+    return p + N_INTOBJECTS - 1;
+}
+</code></pre>
+
+<p><code class="language-plaintext highlighter-rouge">fill_free_list</code> 为 <code class="language-plaintext highlighter-rouge">PyIntBlock</code> 申请内存，将 objects 中的对象，复用其 <code class="language-plaintext highlighter-rouge">ob_type</code> 字段做指针，指向上一个空闲块，最后返回 objects 数组最后一项赋值给 free_list</p>
+
+<p><code class="language-plaintext highlighter-rouge">free_list = fill_free_list()</code></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>  PyIntBlock-&gt;objects
+        +------------+--------------+--------------+
+        |PyIntObject |  PyIntObject |  PyIntObject |
+        |            |              |              | &lt;----+ free_list
+        | ob_type    |   ob_type    |   ob_type    |
+        |    +       |      +       |      +       |
+        +---------+--+-----------+--+--------------+
+             |    ^         |    ^         |
+             |    |         |    |         |
+NULL&lt;--------+    +---------+    +---------+
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">PyIntBlock</code>申请后不会主动释放，只有在解释器结束时调用 <code class="language-plaintext highlighter-rouge">PyInt_Fini</code> 释放。</p>
+
+<p>运行时不再使用（ob_refcnt=0）的 <code class="language-plaintext highlighter-rouge">PyIntObject</code> 会归还到空闲链表。</p>
+
+<p><code class="language-plaintext highlighter-rouge">Py_DECREF</code> 当 <code class="language-plaintext highlighter-rouge">ob_refcnt = 0</code> 会调用对应 <code class="language-plaintext highlighter-rouge">PyTypeObject</code> 中 <code class="language-plaintext highlighter-rouge">tp_dealloc</code> 字段对应的函数指针。</p>
+
+<pre><code class="language-C">PyTypeObject PyInt_Type = {
+    PyVarObject_HEAD_INIT(&amp;PyType_Type, 0)
+    "int",
+    sizeof(PyIntObject),
+    0,
+    (destructor)int_dealloc,                    /* tp_dealloc */
+    (printfunc)int_print,                       /* tp_print */
+</code></pre>
+
+<p>在 PyIntObject 创建的 <code class="language-plaintext highlighter-rouge">PyTypeObject</code> 中 <code class="language-plaintext highlighter-rouge">tp_dealloc</code> 字段指向了 <code class="language-plaintext highlighter-rouge">int_dealloc</code>。</p>
+
+<pre><code class="language-C">static void
+int_dealloc(PyIntObject *v)
+{
+    if (PyInt_CheckExact(v)) {
+        Py_TYPE(v) = (struct _typeobject *)free_list;
+        free_list = v;
+    }
+    else
+        Py_TYPE(v)-&gt;tp_free((PyObject *)v);
+}
+</code></pre>
+
+<p>可以看到，<code class="language-plaintext highlighter-rouge">int_dealloc</code> 中并没有将内存返给系统，而是将对象加入空闲链表。</p>
+
+<p>我们可以在调试器中观察该过程， 启动 Python 后挂上 gdb，在 dealloc 处设置断点，使用 del 手动触发 dealloc 。</p>
+
+<pre><code class="language-Python">&gt;&gt;&gt; a = 1
+&gt;&gt;&gt; del a
+</code></pre>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>// 先查看传入的 object 的地址
+&gt; p v
+$18 = (PyIntObject *) 0x8c6218
+
+// 查看当前 block_list 的开始地址
+&gt; p &amp;block_list-&gt;objects[0] 
+$16 = (PyIntObject *) 0x8c61c8
+
+// 所以传入的 object 在 objects 数组的第 (0x8c6218 - 0x8c61c8 ) / 40  = 2 个位置
+
+// 查看对应的 object， 也可以用 p *(PyIntObject *)v
+&gt; p block_list-&gt;objects[2]                                     
+$21 = {_ob_next = 0x0, _ob_prev = 0x0, ob_refcnt = 0, ob_type = 0x7e8fc0 &lt;PyInt_Type&gt;, ob_ival = 1000}
+
+// 将 object 加入 free_list 之后
+&gt; p block_list-&gt;objects[2]
+$23 = {_ob_next = 0x0, _ob_prev = 0x0, ob_refcnt = 0, ob_type = 0x8c6240, ob_ival = 1000}
+
+// 查看 free_list 中的其他元素
+&gt; p *(PyIntObject *)v-&gt;ob_type-&gt;ob_type
+$27 = {_ob_next = 0x0, _ob_prev = 0x0, ob_refcnt = 0, ob_type = 0x8c61f0, ob_ival = 9498440}
+
+&gt; p &amp;(*(PyIntObject *)v-&gt;ob_type-&gt;ob_type)         
+$35 = (PyIntObject *) 0x8c6268
+</code></pre></div></div>
+
+<p>运行一段时间后， free_list 的内存布局大概会变成这样</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>PyIntBlock                            PyIntBlock
+      +--------+                           +--------+
+      |        |                           |        |
+      |  Next  +---------------------------&gt;  Next  |
+      |        |                           |        |
+      +--------+                           +--------+
+      |        |                           |        |
+      |        |                           |        |
+      | objects|                           | objects|
+      |        |                           |        |
+      |        |                           |        |
+      +---+----+                           +---+----+
+          |                                    |
++-----+---v-+----+-----+-----+       +-----+---v-+----+-----+-----+
+|     |     |    |     |     |       |     |     |    |     |     |
+|     |     |    |     |     |       |     |     |    |     |     |
+|used | free|used|used |free |       |used | free|used|used |free |
+|     |     |    |     |     |       |     |     |    |     |     |
++-----+--+--+----+-----+--+-++       +-----+-^-+-+----+-----+--+--+
+         |                ^ |                | |               ^
+         +----------------+ +----------------- +---------------+
+</code></pre></div></div>
+
+<h3 id="pyintobject-的运算">PyIntObject 的运算</h3>
+
+<p><a href="/2017/06/21/CPython源码阅读笔记%281%29">上一篇</a>中我们了解了 CPython 解释器的基本执行流程，根据之前的知识，代码先会被编译成字节码，然后在核心循环中执行，所以我们调试 CPython 时可以按照如下步骤：</p>
+
+<ul>
+  <li>编写想要调试的功能对应的 Python 代码</li>
+  <li>使用 dis 模块得到源码对应的字节码</li>
+  <li>在 PyEval_EvalFrameEx 的核心循环中找到字节码对应的 TARGET，下断点</li>
+</ul>
+
+<p>先看一下两个 PyIntObject 如何相加， 创建 <code class="language-plaintext highlighter-rouge">test.py</code> 文件写入以下内容：</p>
+
+<pre><code class="language-Python"># test.py
+a=1
+b=2
+c=a+b
+</code></pre>
+
+<p>调用反编译模块， 查看对应的字节码</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>python2 -m dis test.py
+
+  1           0 LOAD_CONST               0 (1)
+              3 STORE_NAME               0 (a)
+
+  2           6 LOAD_CONST               1 (2)
+              9 STORE_NAME               1 (b)
+
+  3          12 LOAD_NAME                0 (a)
+             15 LOAD_NAME                1 (b)
+             18 BINARY_ADD          
+             19 STORE_NAME               2 (c)
+             22 LOAD_CONST               2 (None)
+             25 RETURN_VALUE        
+</code></pre></div></div>
+
+<p>在之前我们看过的 ceval.c 中，可以找到对 <code class="language-plaintext highlighter-rouge">BINARY_ADD</code> 字节码进行解释执行的代码。</p>
+
+<p>可以看到，反编译出的字节码中，先通过 <code class="language-plaintext highlighter-rouge">LOAD_NAME</code> 将两个变量压栈，所以 <code class="language-plaintext highlighter-rouge">BINARY_ADD</code> 先从栈中 POP 出这两个变量，<code class="language-plaintext highlighter-rouge">PyInt_AS_LONG</code> 宏是从 <code class="language-plaintext highlighter-rouge">PyIntObject</code> 中取对应的 <code class="language-plaintext highlighter-rouge">ob_ival</code> 字段，相加得到结果后检查是否溢出。没有溢出的情况直接将结果写回栈顶。</p>
+
+<pre><code class="language-C">// Python/ceval.c PyEval_EvalFrameEx
+
+TARGET_NOARG(BINARY_ADD)
+        {
+            w = POP();
+            v = TOP();
+            if (PyInt_CheckExact(v) &amp;&amp; PyInt_CheckExact(w)) {
+                /* INLINE: int + int */
+                register long a, b, i;
+                a = PyInt_AS_LONG(v);
+                b = PyInt_AS_LONG(w);
+                /* cast to avoid undefined behaviour
+                   on overflow */
+                i = (long)((unsigned long)a + b);
+                if ((i^a) &lt; 0 &amp;&amp; (i^b) &lt; 0)
+                    goto slow_add;
+                x = PyInt_FromLong(i);
+            }
+            else if (PyString_CheckExact(v) &amp;&amp;
+                     PyString_CheckExact(w)) {
+                x = string_concatenate(v, w, f, next_instr);
+                /* string_concatenate consumed the ref to v */
+                goto skip_decref_vx;
+            }
+            else {
+              slow_add:
+                x = PyNumber_Add(v, w);
+            }
+            Py_DECREF(v);
+          skip_decref_vx:
+            Py_DECREF(w);
+            SET_TOP(x);
+            if (x != NULL) DISPATCH();
+            break;
+        }
+</code></pre>
+
+<p>为了提升速度，再检查了栈中 pop 的两个变量的类型均为 PyInt_Type 后，加法运算的代码直接写在了 <code class="language-plaintext highlighter-rouge">PyEval_EvalFrameEx</code> 里，只有当溢出发生时才调用对应的 PyNumber_Add 方法。</p>
+
+<p>PyIntObject 中使用 long 存储对应的整数，使用 sys.maxint 可以得到 PyIntObject 可以存储的数的上限。
+(即 long 的存储上限， 64位系统下 long 为64位，因为有符号，所以上限为 2^63 -1 = 9223372036854775807)</p>
+
+<pre><code class="language-Python">&gt;&gt;&gt; sys.maxint
+9223372036854775807
+</code></pre>
+
+<p>修改 test.py 成下面这样可以触发 <code class="language-plaintext highlighter-rouge">PyNumber_Add</code>。</p>
+
+<pre><code class="language-Python"># test.py
+a=9223372036854775807
+b=1
+c = a+b
+</code></pre>
+
+<p><code class="language-plaintext highlighter-rouge">PyNumber_Add</code> 将传入的两个对象，和对应的 slot （即 PyInt_Type-&gt;tp_as_number-&gt;nb_add， 对应 int_add 函数) 传入 <code class="language-plaintext highlighter-rouge">binary_op1</code>。</p>
+
+<pre><code class="language-C">#define NB_SLOT(x) offsetof(PyNumberMethods, x)
+
+PyObject *
+PyNumber_Add(PyObject *v, PyObject *w)
+{
+    PyObject *result = binary_op1(v, w, NB_SLOT(nb_add));
+    if (result == Py_NotImplemented) {
+        PySequenceMethods *m = v-&gt;ob_type-&gt;tp_as_sequence;
+        Py_DECREF(result);
+        if (m &amp;&amp; m-&gt;sq_concat) {
+            return (*m-&gt;sq_concat)(v, w);
+        }
+        result = binop_type_error(v, w, "+");
+    }
+    return result;
+}
+</code></pre>
+
+<p>单步执行可以看到， binary_op1 进行了几个判断后，调用了对应的 slot 函数，即 <code class="language-plaintext highlighter-rouge">int_add</code>。</p>
+
+<pre><code class="language-C">static PyObject *
+binary_op1(PyObject *v, PyObject *w, const int op_slot)
+{
+    PyObject *x;
+    binaryfunc slotv = NULL;
+    binaryfunc slotw = NULL;
+
+    if (v-&gt;ob_type-&gt;tp_as_number != NULL &amp;&amp; NEW_STYLE_NUMBER(v))
+        slotv = NB_BINOP(v-&gt;ob_type-&gt;tp_as_number, op_slot);
+    ....
+    if (slotv) {
+        ....
+        x = slotv(v, w);
+        if (x != Py_NotImplemented)
+            return x;
+        Py_DECREF(x); /* can't do it */
+    }
+    ....
+}
+</code></pre>
+
+<p><code class="language-plaintext highlighter-rouge">int_add</code> 和 <code class="language-plaintext highlighter-rouge">TARGET_NOARG(BINARY_ADD)</code> 的区别仅在溢出后主动调用 <code class="language-plaintext highlighter-rouge">PyLong_Type</code> 的 <code class="language-plaintext highlighter-rouge">long_add</code> 来处理 PyIntObject 无法表示的数。</p>
+
+<pre><code class="language-C">static PyObject *
+int_add(PyIntObject *v, PyIntObject *w)
+{
+    register long a, b, x;
+    CONVERT_TO_LONG(v, a);
+    CONVERT_TO_LONG(w, b);
+    /* casts in the line below avoid undefined behaviour on overflow */
+    x = (long)((unsigned long)a + b);
+    if ((x^a) &gt;= 0 || (x^b) &gt;= 0)
+        return PyInt_FromLong(x);
+    return PyLong_Type.tp_as_number-&gt;nb_add((PyObject *)v, (PyObject *)w);
+}
+</code></pre>
+
+<h3 id="pyintobject-的其他方法">PyIntObject 的其他方法</h3>
+
+<p>根据文档 <code class="language-plaintext highlighter-rouge">tp_str</code> 会在调用 Python <code class="language-plaintext highlighter-rouge">str</code> 函数时调用，<code class="language-plaintext highlighter-rouge">PyInt_Type</code> 中 <code class="language-plaintext highlighter-rouge">tp_str</code> 指向 <code class="language-plaintext highlighter-rouge">int_to_decimal_string</code>。</p>
+
+<pre><code class="language-C">PyTypeObject PyInt_Type = {
+    PyVarObject_HEAD_INIT(&amp;PyType_Type, 0)
+    "int",
+    sizeof(PyIntObject),
+    0,
+    (destructor)int_dealloc,                    /* tp_dealloc */
+    (printfunc)int_print,                       /* tp_print */
+    0,                                          /* tp_getattr */
+    0,                                          /* tp_setattr */
+    (cmpfunc)int_compare,                       /* tp_compare */
+    (reprfunc)int_to_decimal_string,            /* tp_repr */
+    &amp;int_as_number,                             /* tp_as_number */
+    0,                                          /* tp_as_sequence */
+    0,                                          /* tp_as_mapping */
+    (hashfunc)int_hash,                         /* tp_hash */
+    0,                                          /* tp_call */
+    (reprfunc)int_to_decimal_string,            /* tp_str */
+</code></pre>
+
+<p>单行的语句可以在 Python 中使用 <code class="language-plaintext highlighter-rouge">compile</code> 得到 CodeObject， 将 CodeObject 传入 dis.dis 函数可以得到字节码。</p>
+
+<pre><code class="language-Python">&gt;&gt;&gt; import dis
+&gt;&gt;&gt; co = compile('str(123)', '' ,'single')
+&gt;&gt;&gt; dis.dis(co)
+  1           0 LOAD_NAME                0 (str)
+              3 LOAD_CONST               0 (123)
+              6 CALL_FUNCTION            1
+              9 PRINT_EXPR          
+             10 LOAD_CONST               1 (None)
+             13 RETURN_VALUE
+</code></pre>
+
+<p>在 <code class="language-plaintext highlighter-rouge">int_to_decimal_string</code> 处下断点， 运行 <code class="language-plaintext highlighter-rouge">str(123)</code> 得到调用栈如下</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(gdb) bt
+#0  int_to_decimal_string (v=0x8606b0) at Objects/intobject.c:1174
+#1  0x000000000045ed4c in _PyObject_Str (v=0x8606b0) at Objects/object.c:430
+#2  0x000000000045ee75 in PyObject_Str (v=0x8606b0) at Objects/object.c:451
+#3  0x000000000047c784 in string_new (type=0x7f2580 &lt;PyString_Type&gt;, args=0x7ffff6dc4450, kwds=0x0) at Objects/stringobject.c:3709
+#4  0x00000000004858b7 in type_call (type=0x7f2580 &lt;PyString_Type&gt;, args=0x7ffff6dc4450, kwds=0x0) at Objects/typeobject.c:749
+#5  0x0000000000421043 in PyObject_Call (func=0x7f2580 &lt;PyString_Type&gt;, arg=0x7ffff6dc4450, kw=0x0) at Objects/abstract.c:2546
+#6  0x00000000004d9721 in do_call (func=0x7f2580 &lt;PyString_Type&gt;, pp_stack=0x7fffffffd968, na=1, nk=0) at Python/ceval.c:4567
+#7  0x00000000004d8ae6 in call_function (pp_stack=0x7fffffffd968, oparg=1) at Python/ceval.c:4372
+#8  0x00000000004d33a9 in PyEval_EvalFrameEx (f=0x7ffff6a55060, throwflag=0) at Python/ceval.c:2987
+</code></pre></div></div>
+
+<p>gdb 中使用 <code class="language-plaintext highlighter-rouge">f 8</code> 查看 PyEval_EvalFrameEx 中调用的代码，发现确实是从 <code class="language-plaintext highlighter-rouge">CALL_FUNCTION</code> 进入。</p>
+
+<pre><code class="language-C">// PyEval_EvalFrameEx
+    TARGET(CALL_FUNCTION)
+    {
+        PyObject **sp;
+        PCALL(PCALL_ALL);
+        sp = stack_pointer;
+        x = call_function(&amp;sp, oparg);
+        ....
+    }
+</code></pre>
+
+<pre><code class="language-C">/* Convert an integer to a decimal string.  On many platforms, this
+   will be significantly faster than the general arbitrary-base
+   conversion machinery in _PyInt_Format, thanks to optimization
+   opportunities offered by division by a compile-time constant. */
+static PyObject *
+int_to_decimal_string(PyIntObject *v) {
+    char buf[sizeof(long)*CHAR_BIT/3+6], *p, *bufend;
+    long n = v-&gt;ob_ival;
+    unsigned long absn;
+    p = bufend = buf + sizeof(buf);
+    absn = n &lt; 0 ? 0UL - n : n;
+    do {
+        *--p = '0' + (char)(absn % 10);
+        absn /= 10;
+    } while (absn);
+    if (n &lt; 0)
+        *--p = '-';
+    return PyString_FromStringAndSize(p, bufend - p);
+}
+</code></pre>
+
+  </article>
+
+</div>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function () {
+        var s = document.createElement('script'); s.async = true;
+        s.type = 'text/javascript';
+        s.src = '//' + disqus_shortname + '.disqus.com/count.js';
+        (document.getElementsByTagName('HEAD')[0] || document.getElementsByTagName('BODY')[0]).appendChild(s);
+    }());
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/raphael/2.1.0/raphael-min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+<script src="https://flowchart.js.org/flowchart-latest.js"></script>
+<script src="/js/highlight.min.js"></script>
+<script src="/js/toc.js"></script>
+<script src="/js/qrcode.min.js"></script>
+<script>
+if (!String.prototype.format) {
+    String.prototype.format = function() {
+        var args = arguments;
+        return this.replace(/{(\d+)}/g, function(match, number) { 
+            return typeof args[number] != 'undefined'
+                ? args[number]
+                : match
+            ;
+        });
+    };
+}
+
+$('pre code').each(function(i, block) {
+    hljs.highlightBlock(block);
+});
+
+$('.language-flow').each(function(i, block) {
+    console.log(block);
+    code = $(this).text();
+    diagram = flowchart.parse(code);
+    canvas_id = 'flow'+ i;
+    console.log(canvas_id);
+    temp = "<div id='{0}'> </div>".format(canvas_id);
+    console.log(temp);
+    $(this).html(temp);
+    diagram.drawSVG(canvas_id, {
+        'x': 0,
+        'y': 0,
+        'line-width': 3,
+        'line-length': 50,
+        'text-margin': 10,
+        'font-size': 14,
+    });	
+});
+
+$('#toc').toc({
+    noBackToTopLinks: true,
+    listType: 'ul',
+    title: 'TOC',
+});
+
+var url = location.href;
+console.log(url);
+var qrcode = new QRCode("qrcode", {
+    text: url,
+    width: 128,
+    height: 128,
+    colorDark : "#000000",
+    colorLight : "#ffffff",
+    correctLevel : QRCode.CorrectLevel.H
+});
+
+$(document).ready(function () {
+    $('#show_qrcode').on('mouseenter', function () {
+        $('#qrcode').show();
+        $(this).css({
+            "text-decoration": "underline"
+        });
+    }).on('mouseleave', function () {
+        $('#qrcode').hide();
+        $(this).css({
+            "text-decoration": ''
+        });
+    });;
+});
+</script>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col  footer-col-1">
+        <ul class="contact-list">
+	  <li>
+          <li><a href="mailto:mithrilwoodrat@gmail.com">mithrilwoodrat@gmail.com</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col  footer-col-2">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/Mithrilwoodrat">
+              <span class="icon  icon--github">
+                <svg viewBox="0 0 16 16">
+                  <path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/>
+                </svg>
+              </span>
+              <span class="username">Mithrilwoodrat</span> 
+            </a>
+          </li>
+          
+        </ul>
+      </div>
+  </div>
+</footer>
+
+<script>
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-66599686-1', 'auto');
+  ga('send', 'pageview');
+
+</script>
+</body>
+</html>

@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>
+    CPython源码阅读笔记(3)
+    </title>
+  <link type="application/atom+xml" rel="alternate" href="/feed.xml" title="虚实" />
+  
+  <style>
+  table{
+    border-left:1px solid #000000;border-top:1px solid #000000;
+    width: 100%;
+    word-wrap:break-word; word-break:break-all;
+  }
+  table th{
+  text-align:center;
+  }
+  table th,td{
+    border-right:1px solid #000000;border-bottom:1px solid #000000;
+  }
+  </style>
+
+  <meta name="description" content="PyLongObject">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/toc.css">
+  <link rel="canonical" href="/2017/08/28/CPython%E6%BA%90%E7%A0%81%E9%98%85%E8%AF%BB%E7%AC%94%E8%AE%B0%283%29/">
+  <link rel="alternate" type="application/rss+xml" title="虚实" href="/feed.xml" />
+  <link rel="stylesheet" href="/css/highlight.min.css">
+  <link href="//cdn.staticfile.org/font-awesome/3.2.1/css/font-awesome.min.css" rel="stylesheet"media="all">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+    <div>
+      <a class="site-title" href="/">虚实</a>
+      <div class="site-pages">
+		<a class="site-page" href="/archive/">归档</a>
+		<a class="site-page" href="/categories/">分类</a>
+		<a class="site-page" href="/about/">关于</a>
+		<a class="site-page" href="/friend-links/">友情链接</a>
+        <a class="site-page" href="/recommends/">推荐</a>
+      </div>
+      <p class="site-sub-title">记录下折腾和学习的过程</p>
+    </div>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <div class="post">
+
+  <header class="post-header">
+    <h1 class="post-title">CPython源码阅读笔记(3)</h1>
+    <p class="post-meta">Aug 28, 2017 • admin</p>
+
+	<p class="post-meta"> categories :   <a href="/categories/#python"> python </a>  </p>
+    <div id="show_qrcode">
+        <a>扫描二维码</a>
+        <div id="qrcode" style="display:none;position:absolute;z-index:1"></div>
+    </div>
+  </header>
+  <div class="nav">
+      <div id="toc" class="toc"></div>
+  </div>
+  <article class="post-content">
+    <h2 id="pylongobject">PyLongObject</h2>
+
+<p>PyLongObject 定义在 <code class="language-plaintext highlighter-rouge">include/longobject.h</code> 中，实际的 <code class="language-plaintext highlighter-rouge">longobject</code> 对象定义在 <code class="language-plaintext highlighter-rouge">include/longintrepr.h</code> 中。</p>
+
+<pre><code class="language-C">// include/longobject.h
+typedef struct _longobject PyLongObject; /* Revealed in longintrepr.h */
+</code></pre>
+
+<p><code class="language-plaintext highlighter-rouge">longobject</code> 继承了 CPython 的变长对象 <code class="language-plaintext highlighter-rouge">PyVarObject</code>， 复用了 ob_size 字段来表示正负以及零。同时表示 digit 数组的大小。</p>
+
+<pre><code class="language-C">// include/longintrepr.h
+
+typedef PY_UINT32_T digit;
+
+/* Long integer representation.
+   The absolute value of a number is equal to
+   	SUM(for i=0 through abs(ob_size)-1) ob_digit[i] * 2**(SHIFT*i)
+   Negative numbers are represented with ob_size &lt; 0;
+   zero is represented by ob_size == 0.
+   In a normalized number, ob_digit[abs(ob_size)-1] (the most significant
+   digit) is never zero.  Also, in all cases, for all valid i,
+   	0 &lt;= ob_digit[i] &lt;= MASK.
+   The allocation function takes care of allocating extra memory
+   so that ob_digit[0] ... ob_digit[abs(ob_size)-1] are actually available.
+
+   CAUTION:  Generic code manipulating subtypes of PyVarObject has to
+   aware that longs abuse  ob_size's sign bit.
+*/
+
+struct _longobject {
+	PyObject_VAR_HEAD
+	digit ob_digit[1];
+};
+</code></pre>
+
+<h3 id="pylongobject-的创建">PyLongObject 的创建</h3>
+
+<pre><code class="language-C">// Object/longobject.c
+/* Create a new long int object from a C long int */
+
+PyObject *
+PyLong_FromLong(long ival)
+{
+    PyLongObject *v;
+    unsigned long abs_ival;
+    unsigned long t;  /* unsigned so &gt;&gt; doesn't propagate sign bit */
+    int ndigits = 0;
+    int negative = 0;
+
+    if (ival &lt; 0) {
+        /* if LONG_MIN == -LONG_MAX-1 (true on most platforms) then
+           ANSI C says that the result of -ival is undefined when ival
+           == LONG_MIN.  Hence the following workaround. */
+        abs_ival = (unsigned long)(-1-ival) + 1;
+        negative = 1;
+    }
+    else {
+        abs_ival = (unsigned long)ival;
+    }
+
+    /* Count the number of Python digits.
+       We used to pick 5 ("big enough for anything"), but that's a
+       waste of time and space given that 5*15 = 75 bits are rarely
+       needed. */
+    t = abs_ival;
+    while (t) {
+        ++ndigits;
+        t &gt;&gt;= PyLong_SHIFT;
+    }
+    v = _PyLong_New(ndigits);
+    if (v != NULL) {
+        digit *p = v-&gt;ob_digit;
+        v-&gt;ob_size = negative ? -ndigits : ndigits;
+        t = abs_ival;
+        while (t) {
+            *p++ = (digit)(t &amp; PyLong_MASK);
+            t &gt;&gt;= PyLong_SHIFT;
+        }
+    }
+    return (PyObject *)v;
+}
+</code></pre>
+
+<p><code class="language-plaintext highlighter-rouge">PyLong_SHIFT</code> 默认为30, 每一个 digit 存储的大小为 <code class="language-plaintext highlighter-rouge">PyLong_MASK</code>， 默认为 <code class="language-plaintext highlighter-rouge">2**30 -1</code> 。</p>
+
+<pre><code class="language-C">#define PyLong_SHIFT	30
+....
+#define PyLong_BASE	((digit)1 &lt;&lt; PyLong_SHIFT)
+#define PyLong_MASK	((digit)(PyLong_BASE - 1))
+</code></pre>
+
+<p>将传入的 val 与 <code class="language-plaintext highlighter-rouge">PyLong_MASK</code> 相与，得到的结果放入 longobj-&gt;ob_digit。 然后每次右移 <code class="language-plaintext highlighter-rouge">PyLong_SHIFT</code> 直至 val == 0。</p>
+
+<p>调试观察该创建过程。</p>
+
+<pre><code class="language-Python">&gt;&gt;&gt; long(2147483648)
+</code></pre>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(gdb)
+p v-&gt;ob_size
+-2
+p v-&gt;ob_digit[0]
+0
+p v-&gt;ob_digit[1]
+2
+</code></pre></div></div>
+
+<h3 id="pyvarobject-的创建">PyVarObject 的创建</h3>
+
+<p><code class="language-plaintext highlighter-rouge">PyLong_FromLong</code> 中可以看到，调用了 <code class="language-plaintext highlighter-rouge">_PyLong_New</code> 申请内存新建 <code class="language-plaintext highlighter-rouge">PyLongObject</code> 对象。</p>
+
+<pre><code class="language-C">PyLongObject *
+_PyLong_New(Py_ssize_t size)
+{
+    if (size &gt; (Py_ssize_t)MAX_LONG_DIGITS) {
+        PyErr_SetString(PyExc_OverflowError,
+                        "too many digits in integer");
+        return NULL;
+    }
+    /* coverity[ampersand_in_size] */
+    /* XXX(nnorwitz): PyObject_NEW_VAR / _PyObject_VAR_SIZE need to detect
+       overflow */
+    return PyObject_NEW_VAR(PyLongObject, &amp;PyLong_Type, size);
+}
+</code></pre>
+
+<p><code class="language-plaintext highlighter-rouge">_PyLong_New</code> 对申请的内存长度做检查之后，调用了 <code class="language-plaintext highlighter-rouge">PyObject_MALLOC</code>，size 即新建的 <code class="language-plaintext highlighter-rouge">PyVarObject</code> 中 <code class="language-plaintext highlighter-rouge">ob_size</code> 的值。</p>
+
+<pre><code class="language-C">// include/objimpl.h
+#define PyObject_NEW_VAR(type, typeobj, n) \
+( (type *) PyObject_InitVar( \
+      (PyVarObject *) PyObject_MALLOC(_PyObject_VAR_SIZE((typeobj),(n)) ),\
+      (typeobj), (n)) )
+</code></pre>
+
+<p>PyVarObject 的大小由宏 <code class="language-plaintext highlighter-rouge">_PyObject_VAR_SIZE</code> 计算，由 <code class="language-plaintext highlighter-rouge">PyObject_VAR_HEAD</code> 宏展开的几个定长的字段，加上变长的以 <code class="language-plaintext highlighter-rouge">tp_itemsize</code> 为单位，长度为 <code class="language-plaintext highlighter-rouge">nitems</code> 即 (_PyLong_New 的 size 参数) 的数组组成。</p>
+
+<pre><code class="language-C">#define _PyObject_VAR_SIZE(typeobj, nitems)     \
+    (size_t)                                    \
+    ( ( (typeobj)-&gt;tp_basicsize +               \
+        (nitems)*(typeobj)-&gt;tp_itemsize +       \
+        (SIZEOF_VOID_P - 1)                     \
+      ) &amp; ~(SIZEOF_VOID_P - 1)                  \
+    )
+</code></pre>
+
+<p><code class="language-plaintext highlighter-rouge">PyLong_Type</code> 结构体中定义了 <code class="language-plaintext highlighter-rouge">tp_basicsize</code> 与 <code class="language-plaintext highlighter-rouge">tp_itemsize</code>，继承 <code class="language-plaintext highlighter-rouge">PyVarObject</code> 需要指定 <code class="language-plaintext highlighter-rouge">tp_itemsize</code>，即变长对象中可变数组的单位大小。</p>
+
+<pre><code class="language-C">PyTypeObject PyLong_Type = {
+    PyObject_HEAD_INIT(&amp;PyType_Type)
+    0,                                          /* ob_size */
+    "long",                                     /* tp_name */
+    offsetof(PyLongObject, ob_digit),           /* tp_basicsize */
+    sizeof(digit),                              /* tp_itemsize */
+    ....
+};
+</code></pre>
+
+<p>继承 <code class="language-plaintext highlighter-rouge">PyObject</code> 则只需要将该项留空，如 <code class="language-plaintext highlighter-rouge">PyInt_Type</code>。</p>
+
+<pre><code class="language-C">PyTypeObject PyInt_Type = {
+    PyVarObject_HEAD_INIT(&amp;PyType_Type, 0)
+    "int",
+    sizeof(PyIntObject),
+    0,
+    ....
+}
+</code></pre>
+
+<p>参考 <a href="https://docs.python.org/2/c-api/structures.html">https://docs.python.org/2/c-api/structures.html</a></p>
+
+<h2 id="pystringobject">PyStringObject</h2>
+
+<p><code class="language-plaintext highlighter-rouge">PyStringObject</code> 定义在 <code class="language-plaintext highlighter-rouge">include/stringobject.h</code> 中，实际的字符串内容存放在 ob_sval 数组中，长度为 <code class="language-plaintext highlighter-rouge">ob_size + 1</code>,ob_sval结尾为固定的 <code class="language-plaintext highlighter-rouge">\0</code>。<code class="language-plaintext highlighter-rouge">ob_shash</code> 存储了该对象的 hash 值，默认为 -1, <code class="language-plaintext highlighter-rouge">ob_sstate</code> 用来表示该对象是否在缓存队列里，初始化为 <code class="language-plaintext highlighter-rouge">SSTATE_NOT_INTERNED</code> 即不在缓存中。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>typedef struct {
+    PyObject_VAR_HEAD
+    long ob_shash;
+    int ob_sstate;
+    char ob_sval[1];
+
+    /* Invariants:
+     *     ob_sval contains space for 'ob_size+1' elements.
+     *     ob_sval[ob_size] == 0.
+     *     ob_shash is the hash of the string or -1 if not computed yet.
+     *     ob_sstate != 0 iff the string object is in stringobject.c's
+     *       'interned' dictionary; in this case the two references
+     *       from 'interned' to this object are *not counted* in ob_refcnt.
+     */
+} PyStringObject;
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">ob_sstate</code> 的值有下面几种，分别为：不在缓存中、在缓存中且可修改、在缓存中且不可修改。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>#define SSTATE_NOT_INTERNED 0
+#define SSTATE_INTERNED_MORTAL 1
+#define SSTATE_INTERNED_IMMORTAL 2
+</code></pre></div></div>
+
+<h3 id="pystringobject-的创建">PyStringObject 的创建</h3>
+
+<p><code class="language-plaintext highlighter-rouge">PyStringObject</code> 最常用的创建函数为 <code class="language-plaintext highlighter-rouge">PyString_FromStringAndSize</code> 位于 <code class="language-plaintext highlighter-rouge">Objcts/stringobjec.c</code> 。</p>
+
+<p>在该函数设置一个断点，然后在 REPL 中输入 <code class="language-plaintext highlighter-rouge">a=“123”</code> , 来观察 Python 中字符串对象的创建过程。
+可以得到调用栈如下</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>#0  PyString_FromStringAndSize (str=0x7fffffffced0 "123", size=3) at Objects/stringobject.c:60
+#1  0x00000000004a773b in PyUnicodeUCS2_EncodeUTF8 (s=0x7ffff6436860, size=3, errors=0x0) at Objects/unicodeobject.c:2232
+#2  0x000000000054971c in utf_8_encode (self=0x0, args=0x7ffff7e68a00) at ./Modules/_codecsmodule.c:698
+#3  0x0000000000573222 in PyCFunction_Call (func=0x7ffff6ebb678, arg=0x7ffff7e68a00, kw=0x0) at Objects/methodobject.c:81
+#4  0x000000000042174b in PyObject_Call (func=0x7ffff6ebb678, arg=0x7ffff7e68a00, kw=0x0) at Objects/abstract.c:2547
+#5  0x00000000004dedba in PyEval_CallObjectWithKeywords (func=0x7ffff6ebb678, arg=0x7ffff7e68a00, kw=0x0) at Python/ceval.c:4226
+#6  0x00000000004ee79e in _PyCodec_EncodeInternal (object=0x7ffff6ed93a0, encoder=0x7ffff6ebb678, encoding=0x7ffff6436928 "UTF-8", errors=0x0) at Python/codecs.c:355
+#7  0x00000000004ef2cd in _PyCodec_EncodeText (object=0x7ffff6ed93a0, encoding=0x7ffff6436928 "UTF-8", errors=0x0) at Python/codecs.c:541
+#8  0x00000000004a5714 in PyUnicodeUCS2_AsEncodedString (unicode=0x7ffff6ed93a0, encoding=0x7ffff6436928 "UTF-8", errors=0x0) at Objects/unicodeobject.c:1374
+#9  0x000000000059b774 in parsestr (c=0x7fffffffd9b0, n=0x7ffff7f95b80, s=0x7ffff64368d9 "123'") at Python/ast.c:3535
+#10 0x000000000059b896 in parsestrplus (c=0x7fffffffd9b0, n=0x7ffff7f95b80) at Python/ast.c:3558
+#11 0x0000000000594c7f in ast_for_atom (c=0x7fffffffd9b0, n=0x7ffff7f95b80) at Python/ast.c:1377
+#12 0x0000000000596442 in ast_for_power (c=0x7fffffffd9b0, n=0x7ffff7f95b38) at Python/ast.c:1790
+#13 0x0000000000596bbd in ast_for_expr (c=0x7fffffffd9b0, n=0x7ffff7f95b38) at Python/ast.c:1968
+#14 0x00000000005972ed in ast_for_testlist (c=0x7fffffffd9b0, n=0x7ffff7eeed50) at Python/ast.c:2131
+#15 0x00000000005978ba in ast_for_expr_stmt (c=0x7fffffffd9b0, n=0x7ffff7f95358) at Python/ast.c:2261
+#16 0x000000000059aae6 in ast_for_stmt (c=0x7fffffffd9b0, n=0x7ffff7f95358) at Python/ast.c:3267
+#17 0x0000000000591f16 in PyAST_FromNode (n=0x7ffff7f952c8, flags=0x7fffffffdbc0, filename=0x59e66a "&lt;stdin&gt;", arena=0x87a500) at Python/ast.c:298
+</code></pre></div></div>
+
+<p>可以看到字符串常量 <code class="language-plaintext highlighter-rouge">"123"</code> 是在创建 AST 的时候传给 <code class="language-plaintext highlighter-rouge">PyString_FromStringAndSize</code> 用于创建 <code class="language-plaintext highlighter-rouge">PyStringObject</code> 的。</p>
+
+<p>其创建过程如下：</p>
+
+<p>有一全局静态变量 nullstring 用于表示所有空字符串，如果传入的字符串为空则直接返回指向 nullstring 的指针。</p>
+
+<pre><code class="language-C">static PyStringObject *nullstring;
+</code></pre>
+
+<p>单字符的 str，有一个类似 IntObject 的 freelist 这样的全局缓存，根据字符内容可以直接获取到对应的指针。</p>
+
+<pre><code class="language-C">static PyStringObject *characters[UCHAR_MAX + 1];
+</code></pre>
+
+<p>正常情况下的字符串对象创建时，如传入 <code class="language-plaintext highlighter-rouge">"123"</code>，会调用 <code class="language-plaintext highlighter-rouge">PyObject_MALLOC</code>来申请内存。上面的 <code class="language-plaintext highlighter-rouge">PyLongObject</code> 创建时，是调用 <code class="language-plaintext highlighter-rouge">PyObject_NEW_VAR</code> 宏，计算好内存大小，间接调用 <code class="language-plaintext highlighter-rouge">PyObject_MALLOC</code>。
+而 <code class="language-plaintext highlighter-rouge">PyString_FromStringAndSize</code> 中因为 <code class="language-plaintext highlighter-rouge">ob_sval</code> 中每个元素长度固定(char)，通过 <code class="language-plaintext highlighter-rouge">PyStringObject_SIZE</code> 计算出结构体中固定的大小后加上变化的 size 参数，直接调用 <code class="language-plaintext highlighter-rouge">PyObject_MALLOC</code>。
+至于 <code class="language-plaintext highlighter-rouge">PyObject_MALLOC</code> 里 CPython 内存管理的细节，在下面再慢慢展开。</p>
+
+<p><code class="language-plaintext highlighter-rouge">PyStringObject_SIZE</code> 得到 <code class="language-plaintext highlighter-rouge">PyStringObject</code> 中 <code class="language-plaintext highlighter-rouge">ob_sval</code> 字段之前的字段的大小之和，加上 <code class="language-plaintext highlighter-rouge">ob_sval</code>末尾固定的 <code class="language-plaintext highlighter-rouge">\0</code> 的元素大小(1)。</p>
+
+<pre><code class="language-C">#define PyStringObject_SIZE (offsetof(PyStringObject, ob_sval) + 1)
+</code></pre>
+
+<p>申请好内存之后，将按上面叙述过的过程进行初始化。然后将 <code class="language-plaintext highlighter-rouge">char *</code> 的内容拷贝到 <code class="language-plaintext highlighter-rouge">ob_sval</code> 中，并在末尾填入 <code class="language-plaintext highlighter-rouge">\0</code>。剩下为在 <code class="language-plaintext highlighter-rouge">nullstring</code> 和 <code class="language-plaintext highlighter-rouge">characters</code> 中的元素未初始化时对其进行初始化。</p>
+
+<pre><code class="language-C">PyObject *
+PyString_FromStringAndSize(const char *str, Py_ssize_t size)
+{
+    register PyStringObject *op;
+    if (size &lt; 0) {
+        PyErr_SetString(PyExc_SystemError,
+            "Negative size passed to PyString_FromStringAndSize");
+        return NULL;
+    }
+    if (size == 0 &amp;&amp; (op = nullstring) != NULL) {
+#ifdef COUNT_ALLOCS
+        null_strings++;
+#endif
+        Py_INCREF(op);
+        return (PyObject *)op;
+    }
+    if (size == 1 &amp;&amp; str != NULL &amp;&amp;
+        (op = characters[*str &amp; UCHAR_MAX]) != NULL)
+    {
+#ifdef COUNT_ALLOCS
+        one_strings++;
+#endif
+        Py_INCREF(op);
+        return (PyObject *)op;
+    }
+
+    if (size &gt; PY_SSIZE_T_MAX - PyStringObject_SIZE) {
+        PyErr_SetString(PyExc_OverflowError, "string is too large");
+        return NULL;
+    }
+
+    /* Inline PyObject_NewVar */
+    op = (PyStringObject *)PyObject_MALLOC(PyStringObject_SIZE + size);
+    if (op == NULL)
+        return PyErr_NoMemory();
+    (void)PyObject_INIT_VAR(op, &amp;PyString_Type, size);
+    op-&gt;ob_shash = -1;
+    op-&gt;ob_sstate = SSTATE_NOT_INTERNED;
+    if (str != NULL)
+        Py_MEMCPY(op-&gt;ob_sval, str, size);
+    op-&gt;ob_sval[size] = '\0';
+    /* share short strings */
+    if (size == 0) {
+        PyObject *t = (PyObject *)op;
+        PyString_InternInPlace(&amp;t);
+        op = (PyStringObject *)t;
+        nullstring = op;
+        Py_INCREF(op);
+    } else if (size == 1 &amp;&amp; str != NULL) {
+        PyObject *t = (PyObject *)op;
+        PyString_InternInPlace(&amp;t);
+        op = (PyStringObject *)t;
+        characters[*str &amp; UCHAR_MAX] = op;
+        Py_INCREF(op);
+    }
+    return (PyObject *) op;
+}
+</code></pre>
+
+<h2 id="pylistobject">PyListObject</h2>
+
+<p>PyLongObject 定义在 include/listobject.h 中</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>typedef struct {
+    PyObject_VAR_HEAD
+    /* Vector of pointers to list elements.  list[0] is ob_item[0], etc. */
+    PyObject **ob_item;
+
+    /* ob_item contains space for 'allocated' elements.  The number
+     * currently in use is ob_size.
+     * Invariants:
+     *     0 &lt;= ob_size &lt;= allocated
+     *     len(list) == ob_size
+     *     ob_item == NULL implies ob_size == allocated == 0
+     * list.sort() temporarily sets allocated to -1 to detect mutations.
+     *
+     * Items must normally not be NULL, except during construction when
+     * the list is not yet visible outside the function that builds it.
+     */
+    Py_ssize_t allocated;
+} PyListObject;
+</code></pre></div></div>
+
+<p>通过注释可以看出，Python 中的 list 类似 C++ 中的 vector，申请的内存大小会比实际使用的元素内存更大。 
+<code class="language-plaintext highlighter-rouge">allocated</code> 字段指定了实际的内存大小。</p>
+
+<h3 id="pylistobject-的创建">PyListObject 的创建</h3>
+
+<p>Python 中 List 的创建首先通过 <code class="language-plaintext highlighter-rouge">PyList_New</code> 申请 PyListObject 所需要的内存。
+先申请 PyListObject 对象本身需要的内存，如果缓存 <code class="language-plaintext highlighter-rouge">free_list</code> 中有未使用的对象就会复用，否则调用 <code class="language-plaintext highlighter-rouge">PyObject_GC_New</code> 申请新的内存。</p>
+
+<p>在初始化对象之后再根据实际的 size 大小,申请对应数量的 <code class="language-plaintext highlighter-rouge">*PyObject</code> 指针大小的内存。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>PyObject *
+PyList_New(Py_ssize_t size)
+{
+    PyListObject *op;
+    size_t nbytes;
+    if (size &lt; 0) {
+        PyErr_BadInternalCall();
+        return NULL;
+    }
+    /* Check for overflow without an actual overflow,
+     *  which can cause compiler to optimise out */
+    if ((size_t)size &gt; PY_SIZE_MAX / sizeof(PyObject *))
+        return PyErr_NoMemory();
+    nbytes = size * sizeof(PyObject *);
+    if (numfree) {
+        numfree--;
+        op = free_list[numfree];
+        _Py_NewReference((PyObject *)op);
+    } else {
+        op = PyObject_GC_New(PyListObject, &amp;PyList_Type);
+        if (op == NULL)
+            return NULL;
+    }
+    if (size &lt;= 0)
+        op-&gt;ob_item = NULL;
+    else {
+        op-&gt;ob_item = (PyObject **) PyMem_MALLOC(nbytes);
+        if (op-&gt;ob_item == NULL) {
+            Py_DECREF(op);
+            return PyErr_NoMemory();
+        }
+        memset(op-&gt;ob_item, 0, nbytes);
+    }
+    Py_SIZE(op) = size;
+    op-&gt;allocated = size;
+    _PyObject_GC_TRACK(op);
+    return (PyObject *) op;
+}
+</code></pre></div></div>
+
+<h3 id="列表初始化">列表初始化</h3>
+
+<p>Python 中初始话一个有数据的 List 时，会调用到 <code class="language-plaintext highlighter-rouge">PyList_Append</code>,我们可以手动创建一个 List 来调试观察该过程。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&gt;&gt;&gt; l = [1,2,3]
+</code></pre></div></div>
+
+<p>gdb attach 到进程后设置断点</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>b listobject.c:PyList_Append
+c
+</code></pre></div></div>
+
+<p>Python 语法分析的过程中可能会用到 List 对象，所以我们需要动态的查看有没有跑到我们想断的位置。
+比如下面第一次断点中，就会发现列表中的元素不是我们想要的结果。</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(gdb) p ((PyListObject*)op)-&gt;ob_item[0]-&gt;ob_type
+$20 = (struct _typeobject *) 0x7f3da89d4fa0 &lt;PyString_Type&gt;
+(gdb) p ((PyStringObject *)((PyListObject*)op)-&gt;ob_item[0])-&gt;ob_sval
+$21 = "l"
+</code></pre></div></div>
+
+<p>继续运行直到遇到我们输入的变量。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(gdb) p newitem-&gt;ob_type-&gt;tp_name
+$9 = 0x7f3da8784e88 "int"
+(gdb) p ((PyIntObject*)newitem)-&gt;ob_ival
+$10 =  1
+</code></pre></div></div>
+
+<p>查看代码可以发现，<code class="language-plaintext highlighter-rouge">PyList_Append</code> 其实是调用内部的 static 函数 <code class="language-plaintext highlighter-rouge">app1</code>。
+而 <code class="language-plaintext highlighter-rouge">app1</code> 先通过 <code class="language-plaintext highlighter-rouge">list_resize</code> 函数调整 ListObject 的内存大小，然后通过 <code class="language-plaintext highlighter-rouge">PyList_SET_ITEM</code> 宏直接设置 <code class="language-plaintext highlighter-rouge">PyObject **ob_item</code> 中的元素。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>static int
+app1(PyListObject *self, PyObject *v)
+{
+    Py_ssize_t n = PyList_GET_SIZE(self);
+
+    assert (v != NULL);
+    if (n == PY_SSIZE_T_MAX) {
+        PyErr_SetString(PyExc_OverflowError,
+            "cannot add more objects to list");
+        return -1;
+    }
+
+    if (list_resize(self, n+1) == -1)
+        return -1;
+
+    Py_INCREF(v);
+    PyList_SET_ITEM(self, n, v);
+    return 0;
+}
+
+int
+PyList_Append(PyObject *op, PyObject *newitem)
+{
+    if (PyList_Check(op) &amp;&amp; (newitem != NULL))
+        return app1((PyListObject *)op, newitem);
+    PyErr_BadInternalCall();
+    return -1;
+}
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">app1</code> 函数中调用 <code class="language-plaintext highlighter-rouge">list_resize</code> 时，虽然传入的参数时 n+1，但实际的内存变化没有表面上这么简单。</p>
+
+<h3 id="pylistobject-resize">PyListObject resize</h3>
+
+<p>当 List 的元素个数发生变化时，CPython 会调用 <code class="language-plaintext highlighter-rouge">list_resize</code> 来改变 ob_item 的大小。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>/* Ensure ob_item has room for at least newsize elements, and set
+ * ob_size to newsize.  If newsize &gt; ob_size on entry, the content
+ * of the new slots at exit is undefined heap trash; it's the caller's
+ * responsibility to overwrite them with sane values.
+ * The number of allocated elements may grow, shrink, or stay the same.
+ * Failure is impossible if newsize &lt;= self.allocated on entry, although
+ * that partly relies on an assumption that the system realloc() never
+ * fails when passed a number of bytes &lt;= the number of bytes last
+ * allocated (the C standard doesn't guarantee this, but it's hard to
+ * imagine a realloc implementation where it wouldn't be true).
+ * Note that self-&gt;ob_item may change, and even if newsize is less
+ * than ob_size on entry.
+ */
+static int
+list_resize(PyListObject *self, Py_ssize_t newsize)
+{
+    PyObject **items;
+    size_t new_allocated;
+    Py_ssize_t allocated = self-&gt;allocated;
+
+    /* Bypass realloc() when a previous overallocation is large enough
+       to accommodate the newsize.  If the newsize falls lower than half
+       the allocated size, then proceed with the realloc() to shrink the list.
+    */
+    if (allocated &gt;= newsize &amp;&amp; newsize &gt;= (allocated &gt;&gt; 1)) {
+        assert(self-&gt;ob_item != NULL || newsize == 0);
+        Py_SIZE(self) = newsize;
+        return 0;
+    }
+
+    /* This over-allocates proportional to the list size, making room
+     * for additional growth.  The over-allocation is mild, but is
+     * enough to give linear-time amortized behavior over a long
+     * sequence of appends() in the presence of a poorly-performing
+     * system realloc().
+     * The growth pattern is:  0, 4, 8, 16, 25, 35, 46, 58, 72, 88, ...
+     */
+    new_allocated = (newsize &gt;&gt; 3) + (newsize &lt; 9 ? 3 : 6);
+
+    /* check for integer overflow */
+    if (new_allocated &gt; PY_SIZE_MAX - newsize) {
+        PyErr_NoMemory();
+        return -1;
+    } else {
+        new_allocated += newsize;
+    }
+
+    if (newsize == 0)
+        new_allocated = 0;
+    items = self-&gt;ob_item;
+    if (new_allocated &lt;= (PY_SIZE_MAX / sizeof(PyObject *)))
+        PyMem_RESIZE(items, PyObject *, new_allocated);
+    else
+        items = NULL;
+    if (items == NULL) {
+        PyErr_NoMemory();
+        return -1;
+    }
+    self-&gt;ob_item = items;
+    Py_SIZE(self) = newsize;
+    self-&gt;allocated = new_allocated;
+    return 0;
+}
+</code></pre></div></div>
+
+<p>从上面的代码可以看出，当 List 不断 append 的时候，其实际申请的内存即 allocated 值会线性的增长，并保持比 ob_size 更大。</p>
+
+<p>例如上面的调试过程可以观察到，当 ob_size=3 时，allocated 大于 ob_size 等于4。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(gdb) p ((PyListObject*)op)-&gt;allocated
+$26 = 4
+(gdb) p ((PyListObject*)op)-&gt;ob_size
+$27 = 3
+</code></pre></div></div>
+
+  </article>
+
+</div>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function () {
+        var s = document.createElement('script'); s.async = true;
+        s.type = 'text/javascript';
+        s.src = '//' + disqus_shortname + '.disqus.com/count.js';
+        (document.getElementsByTagName('HEAD')[0] || document.getElementsByTagName('BODY')[0]).appendChild(s);
+    }());
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/raphael/2.1.0/raphael-min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+<script src="https://flowchart.js.org/flowchart-latest.js"></script>
+<script src="/js/highlight.min.js"></script>
+<script src="/js/toc.js"></script>
+<script src="/js/qrcode.min.js"></script>
+<script>
+if (!String.prototype.format) {
+    String.prototype.format = function() {
+        var args = arguments;
+        return this.replace(/{(\d+)}/g, function(match, number) { 
+            return typeof args[number] != 'undefined'
+                ? args[number]
+                : match
+            ;
+        });
+    };
+}
+
+$('pre code').each(function(i, block) {
+    hljs.highlightBlock(block);
+});
+
+$('.language-flow').each(function(i, block) {
+    console.log(block);
+    code = $(this).text();
+    diagram = flowchart.parse(code);
+    canvas_id = 'flow'+ i;
+    console.log(canvas_id);
+    temp = "<div id='{0}'> </div>".format(canvas_id);
+    console.log(temp);
+    $(this).html(temp);
+    diagram.drawSVG(canvas_id, {
+        'x': 0,
+        'y': 0,
+        'line-width': 3,
+        'line-length': 50,
+        'text-margin': 10,
+        'font-size': 14,
+    });	
+});
+
+$('#toc').toc({
+    noBackToTopLinks: true,
+    listType: 'ul',
+    title: 'TOC',
+});
+
+var url = location.href;
+console.log(url);
+var qrcode = new QRCode("qrcode", {
+    text: url,
+    width: 128,
+    height: 128,
+    colorDark : "#000000",
+    colorLight : "#ffffff",
+    correctLevel : QRCode.CorrectLevel.H
+});
+
+$(document).ready(function () {
+    $('#show_qrcode').on('mouseenter', function () {
+        $('#qrcode').show();
+        $(this).css({
+            "text-decoration": "underline"
+        });
+    }).on('mouseleave', function () {
+        $('#qrcode').hide();
+        $(this).css({
+            "text-decoration": ''
+        });
+    });;
+});
+</script>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col  footer-col-1">
+        <ul class="contact-list">
+	  <li>
+          <li><a href="mailto:mithrilwoodrat@gmail.com">mithrilwoodrat@gmail.com</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col  footer-col-2">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/Mithrilwoodrat">
+              <span class="icon  icon--github">
+                <svg viewBox="0 0 16 16">
+                  <path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/>
+                </svg>
+              </span>
+              <span class="username">Mithrilwoodrat</span> 
+            </a>
+          </li>
+          
+        </ul>
+      </div>
+  </div>
+</footer>
+
+<script>
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-66599686-1', 'auto');
+  ga('send', 'pageview');
+
+</script>
+</body>
+</html>

@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>
+    2019安全产品回顾
+    </title>
+  <link type="application/atom+xml" rel="alternate" href="/feed.xml" title="虚实" />
+  
+  <style>
+  table{
+    border-left:1px solid #000000;border-top:1px solid #000000;
+    width: 100%;
+    word-wrap:break-word; word-break:break-all;
+  }
+  table th{
+  text-align:center;
+  }
+  table th,td{
+    border-right:1px solid #000000;border-bottom:1px solid #000000;
+  }
+  </style>
+
+  <meta name="description" content="今年做过的几个项目">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/toc.css">
+  <link rel="canonical" href="/2020/01/05/2019%E5%AE%89%E5%85%A8%E4%BA%A7%E5%93%81%E5%9B%9E%E9%A1%BE/">
+  <link rel="alternate" type="application/rss+xml" title="虚实" href="/feed.xml" />
+  <link rel="stylesheet" href="/css/highlight.min.css">
+  <link href="//cdn.staticfile.org/font-awesome/3.2.1/css/font-awesome.min.css" rel="stylesheet"media="all">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+    <div>
+      <a class="site-title" href="/">虚实</a>
+      <div class="site-pages">
+		<a class="site-page" href="/archive/">归档</a>
+		<a class="site-page" href="/categories/">分类</a>
+		<a class="site-page" href="/about/">关于</a>
+		<a class="site-page" href="/friend-links/">友情链接</a>
+        <a class="site-page" href="/recommends/">推荐</a>
+      </div>
+      <p class="site-sub-title">记录下折腾和学习的过程</p>
+    </div>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <div class="post">
+
+  <header class="post-header">
+    <h1 class="post-title">2019安全产品回顾</h1>
+    <p class="post-meta">Jan 5, 2020 • admin</p>
+
+	<p class="post-meta"> categories :   <a href="/categories/#安全"> 安全 </a>  </p>
+    <div id="show_qrcode">
+        <a>扫描二维码</a>
+        <div id="qrcode" style="display:none;position:absolute;z-index:1"></div>
+    </div>
+  </header>
+  <div class="nav">
+      <div id="toc" class="toc"></div>
+  </div>
+  <article class="post-content">
+    <h1 id="今年做过的几个项目">今年做过的几个项目</h1>
+
+<h2 id="tip">TIP</h2>
+
+<p>在鹅厂完善了威胁情报生产运营后，开始探索具体应用的产品方向，最后定下做多源运营查询的威胁情报平台(TIP)。作为主要的研发负责人，参与了市场、产品调研到需求定制再到最后落地开发交付的整个过程。</p>
+
+<p>从市场上看，整体的安全市场本就不大，具体到威胁情报这块的市场就更小了。并且现实的情况为国内大部分客户对威胁情报这种比较新的东西认识还不够也就造成了潜在的需求方并不多，只有那些有自己专业安全团队的大型公司才会有付费的意愿，并且这种类型的公司多半已经购买过不少安全设备并且有 soc 类的产品了，重型的产品想要打进去的机会就更加少了。在这种形式下，可以和 soc 产品相结合，并且可以集成多种商业情报和开源情报并提供查询、集成和管理的平台就成了一个可行的突破口。</p>
+
+<p>产品层面，虽然整个安全市场中确实存在华而不实或者只是为了合规等原因做出的奇怪产品，我们的出发点还是以解决实际的安全为主，并且尽量将鹅厂实际的安全实践经验附加到我们产品中。具体来说，做为本身就是把威胁情报业务作为主要业务的组，产品核心的卖点之一就是要集成鹅厂对外的商业情报，将 TIP 作为一个承载情报的容器，通过 TIP 将情报一起以订阅模式卖出。另外一个重要的点就是将我们对业务也就是威胁情报的理解具象化到产品中。</p>
+
+<p>首先，从我们的实战经验和业界友商们都统一的认知来说，域名/IP 类的 IOC 在实际场景中比较容易使用，也容易和已有的 SOC 类产品中的 DNS log 和 Flow log 集成。所以推送的情报目前以这两种为主是比较合理的。样本类的情报更新变化太快，而检测效果和匹配效率都不如前两个。更进一步的 TTP 情报基本很难落地，也很难量化售卖，现阶段基本不用考虑。</p>
+
+<p>但单一的 IOC 是缺乏说服力的，作为专业的安全工程师，需要有数据辅助判断 IOC 的准确性，这个数据从外部来说就是类似 VirusTotal 的 Graph 中那样，一个 IOC 需要给出其关联的样本(以及样本的多引擎鉴定结果)，曾经解析过的 IP，更进一步如果有对应的分析文章就基本上稳了。在给出背景信息的过程中最好能够跳转到外部的分析平台，比如 VT、Malwares.com、微步以及鹅厂自家的安图等等。此外，也可以用开源的 STIX 格式类似的形式，根据 IOC 反向索引到 TTP，也就是攻击的手法，或者更具体的样本行为(文件路径、注册表、c2 特殊url、mutex等等)，这样既能更精准的判断告警的准确性，也可以辅助客户的安全人员排查解决问题。</p>
+
+<p>除了解决安全问题这一个主要痛点，还需要有导入其他厂商情报，导入国标、STIX 等格式的文件，以及订阅开源的情报源等等。这方面可以参考 <a href="https://www.misp-project.org/">MISP</a>。</p>
+
+<p>还有就是产品使用时会有一些运营需求，例如禁用某些产生误报的 IOC，或者禁用某些质量不够好的情报源(比如某一次从外部文件导入的一批情报)。以及给不同的来源设置不同的分数，客户安全团队人工在界面上添加新的自己捕获的 IOC 等。</p>
+
+<p>考虑到有些客户规模比较大，内部会有不同的设备或者安全系统来调用 TIP 的 API，产品还需要提供基于 Appid 区分调用者，并且能控制每个 Appid 的开启和关闭。</p>
+
+<p>除了上面提到的这些功能点，有一个大部分安全产品，或者说大部分控制台后台都会有的 Dashboard 功能，用以统计每天更新的情报数、每个 Appid 查询数量以及告警数量等。然后推送一些新的含有情报的报告，或者家族追踪文章，行业相关的安全新闻等。</p>
+
+<p>技术上，这个产品最难的是在云端基于根据观察数据和大规模样本总结出来的专家规则、基于 att&amp;ck 定制的专有规则、机器学习模型、图聚类模型等等方法，使用大数据相关的技术来发现威胁。并通过层层去误报以及基于内部的告警运营去掉大部分误报，得到精准并可以直接用于发现对应类型威胁得 IOC。</p>
+
+<p>具体到该系统本身，有几个最主要的难点。</p>
+
+<ul>
+  <li>
+    <p>一个是需要将云端加密的文件放入内存提供查询服务，这些内部数据需要提供给客户离线查询，但是又不能被恶意的客户获取到全量明文。在此基础上加密数据还得和数据库中人工添加、导入的数据一同被索引。这需要实现几套不同的数据结构来存放不同来源的数据，并且要保证数据能够按照统一的格式返回。</p>
+  </li>
+  <li>
+    <p>还有就是受制于架构，该系统需要做不少单机高性能的优化，得耐心地用 Go Profile 一个个找到性能消耗多的函数再仔细思考优化的方法。</p>
+  </li>
+  <li>
+    <p>最后就是新闻推送之类的场景需要实现类似 kafka 一样的根据 id 来增量获取的机制，在部分失败后还可以根据 id 来逐个重试，在此基础上还需要能够把已经推送的新闻或者 IOC 给撤回。</p>
+  </li>
+</ul>
+
+<h2 id="云防火墙">云防火墙</h2>
+
+<p>下半年的时候，开启了一个新的云上安全产品的项目–<a href="https://cloud.tencent.com/product/cfw">云防火墙</a>。让我感到诧异的是腾讯云之前居然没有统一管控外网ip的地方。在这个方面AWS 有 <a href="https://aws.amazon.com/cn/firewall-manager/">firewall-manager</a>，而阿里云也有自己的<a href="https://www.aliyun.com/product/cfw">cfw</a>。</p>
+
+<p>和传统的防火墙一样，云防火墙也具有南北向访问控制的能力。利用云厂商的优势和 SDN 等技术，云防火墙还可以实现租户网络拓扑图绘制，以及东西向的微服务间的安全管理等。</p>
+
+<h3 id="南北向安全">南北向安全</h3>
+
+<h4 id="入站">入站</h4>
+
+<p>南北向安全有一个基本的需求，即统一管理所有对外的ip和端口。和 idc 环境只有若干有限的已知的出口 ip 不同，云上 cvm 可能在创建的时候可能就自带有一个 eip，并且可能还有 VPN 网关， 云LB 等等各种各样的服务，它们都具有自己的公网 ip。云防火墙需要汇集租户在云上所有的公网 ip、以及其对应的云产品，让用户像配置传统防火墙一样配置其入站的访问控制规则。用以防止不该暴露在公网的 ip 暴露在公网重，以及 ban 掉恶意攻击的 ip。</p>
+
+<p>入站流量也可以像传统防火墙一样结合 IPS 的功能，对恶意的包做拦截。</p>
+
+<p>有别于 IDC 环境，云上环境有其自身的复杂性。ECS 层面可能已经有用户配置的安全组策略，而虚拟主机上也可能会有云厂商自己的一些安全组策略，而这些策略在云防火墙这个层面不一定对客户可见。这里会造成客户对云防火墙规则之外的拦截感到迷惑。技术上这里需要将各安全产品的拦截日志汇总做对账，并且需要做到拦截行为能够回溯到对应的产品和规则。</p>
+
+<p>在云防火墙的拦截实现上，不能像安全组一样直接在某个宿主机内核之类的地方实现类似 iptables 的丢包，而是需要利用 sdn 技术将符合对应源、目的ip和端口的包在 sdn controller 层面设置丢弃。简单一点的话也可以在所有云服务器机房的出口部署物理拦截设备。</p>
+
+<h4 id="出站">出站</h4>
+
+<p>出站的逻辑和入站基本一致，可以阻止后门程序连接到恶意 ip。不同的地方是，出站方向可以允许配置域名，防止 VPC 内的机器访问恶意的网站。或者配置只允许内网的机器访问镜像源之类的网站。</p>
+
+<p>出站流量也可以结合其他安全产品，例如结合威胁情报发现内部已发生的威胁。或者将日志打到 SOC 类产品，统计分析是否有异常行为。</p>
+
+<p>配置出战的域名拦截规则需要考虑存在很多 Https 的连接，需要通过流量中 HTTPS 的 SNI 值来判断对应的域名。</p>
+
+<h3 id="东西向安全">东西向安全</h3>
+
+<p>云防火墙产品除了互联网边界防护的功能外，还应该集成VPC网关防火墙、安全组(主机防火墙)的功能，做内网的网络隔离和访问控制。以及防止内网中的横向移动，阻止蠕虫类病毒在内网传播等。</p>
+
+<p>实现上，可以结合流量分析和主机上的 HIDS 日志。</p>
+
+  </article>
+
+</div>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function () {
+        var s = document.createElement('script'); s.async = true;
+        s.type = 'text/javascript';
+        s.src = '//' + disqus_shortname + '.disqus.com/count.js';
+        (document.getElementsByTagName('HEAD')[0] || document.getElementsByTagName('BODY')[0]).appendChild(s);
+    }());
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/raphael/2.1.0/raphael-min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+<script src="https://flowchart.js.org/flowchart-latest.js"></script>
+<script src="/js/highlight.min.js"></script>
+<script src="/js/toc.js"></script>
+<script src="/js/qrcode.min.js"></script>
+<script>
+if (!String.prototype.format) {
+    String.prototype.format = function() {
+        var args = arguments;
+        return this.replace(/{(\d+)}/g, function(match, number) { 
+            return typeof args[number] != 'undefined'
+                ? args[number]
+                : match
+            ;
+        });
+    };
+}
+
+$('pre code').each(function(i, block) {
+    hljs.highlightBlock(block);
+});
+
+$('.language-flow').each(function(i, block) {
+    console.log(block);
+    code = $(this).text();
+    diagram = flowchart.parse(code);
+    canvas_id = 'flow'+ i;
+    console.log(canvas_id);
+    temp = "<div id='{0}'> </div>".format(canvas_id);
+    console.log(temp);
+    $(this).html(temp);
+    diagram.drawSVG(canvas_id, {
+        'x': 0,
+        'y': 0,
+        'line-width': 3,
+        'line-length': 50,
+        'text-margin': 10,
+        'font-size': 14,
+    });	
+});
+
+$('#toc').toc({
+    noBackToTopLinks: true,
+    listType: 'ul',
+    title: 'TOC',
+});
+
+var url = location.href;
+console.log(url);
+var qrcode = new QRCode("qrcode", {
+    text: url,
+    width: 128,
+    height: 128,
+    colorDark : "#000000",
+    colorLight : "#ffffff",
+    correctLevel : QRCode.CorrectLevel.H
+});
+
+$(document).ready(function () {
+    $('#show_qrcode').on('mouseenter', function () {
+        $('#qrcode').show();
+        $(this).css({
+            "text-decoration": "underline"
+        });
+    }).on('mouseleave', function () {
+        $('#qrcode').hide();
+        $(this).css({
+            "text-decoration": ''
+        });
+    });;
+});
+</script>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col  footer-col-1">
+        <ul class="contact-list">
+	  <li>
+          <li><a href="mailto:mithrilwoodrat@gmail.com">mithrilwoodrat@gmail.com</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col  footer-col-2">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/Mithrilwoodrat">
+              <span class="icon  icon--github">
+                <svg viewBox="0 0 16 16">
+                  <path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/>
+                </svg>
+              </span>
+              <span class="username">Mithrilwoodrat</span> 
+            </a>
+          </li>
+          
+        </ul>
+      </div>
+  </div>
+</footer>
+
+<script>
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-66599686-1', 'auto');
+  ga('send', 'pageview');
+
+</script>
+</body>
+</html>

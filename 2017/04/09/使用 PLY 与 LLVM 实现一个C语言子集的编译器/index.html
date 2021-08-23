@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>
+    实现一个C语言子集的玩具编译器
+    </title>
+  <link type="application/atom+xml" rel="alternate" href="/feed.xml" title="虚实" />
+  
+  <style>
+  table{
+    border-left:1px solid #000000;border-top:1px solid #000000;
+    width: 100%;
+    word-wrap:break-word; word-break:break-all;
+  }
+  table th{
+  text-align:center;
+  }
+  table th,td{
+    border-right:1px solid #000000;border-bottom:1px solid #000000;
+  }
+  </style>
+
+  <meta name="description" content="1">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/toc.css">
+  <link rel="canonical" href="/2017/04/09/%E4%BD%BF%E7%94%A8%20PLY%20%E4%B8%8E%20LLVM%20%E5%AE%9E%E7%8E%B0%E4%B8%80%E4%B8%AAC%E8%AF%AD%E8%A8%80%E5%AD%90%E9%9B%86%E7%9A%84%E7%BC%96%E8%AF%91%E5%99%A8/">
+  <link rel="alternate" type="application/rss+xml" title="虚实" href="/feed.xml" />
+  <link rel="stylesheet" href="/css/highlight.min.css">
+  <link href="//cdn.staticfile.org/font-awesome/3.2.1/css/font-awesome.min.css" rel="stylesheet"media="all">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+    <div>
+      <a class="site-title" href="/">虚实</a>
+      <div class="site-pages">
+		<a class="site-page" href="/archive/">归档</a>
+		<a class="site-page" href="/categories/">分类</a>
+		<a class="site-page" href="/about/">关于</a>
+		<a class="site-page" href="/friend-links/">友情链接</a>
+        <a class="site-page" href="/recommends/">推荐</a>
+      </div>
+      <p class="site-sub-title">记录下折腾和学习的过程</p>
+    </div>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <div class="post">
+
+  <header class="post-header">
+    <h1 class="post-title">实现一个C语言子集的玩具编译器</h1>
+    <p class="post-meta">Apr 9, 2017 • admin</p>
+
+	<p class="post-meta"> categories :   <a href="/categories/#compiler"> compiler </a>  </p>
+    <div id="show_qrcode">
+        <a>扫描二维码</a>
+        <div id="qrcode" style="display:none;position:absolute;z-index:1"></div>
+    </div>
+  </header>
+  <div class="nav">
+      <div id="toc" class="toc"></div>
+  </div>
+  <article class="post-content">
+    <h2 id="1">1</h2>
+
+<p>之前的项目里做了很多跟 DSL 有关的工作，加上某天在 HackerNews 上看到了<a href="http://www.sigbus.info/how-i-wrote-a-self-hosting-c-compiler-in-40-days.html">how-i-wrote-a-self-hosting-c-compiler-in-40-days</a>
+这篇文章，于是又燃起了动手写个玩具编译器的想法。</p>
+
+<p>回想起在学校的时候，曾经多次想尝试写一个编译器或者解释器，都因为水平不够都夭折了。</p>
+
+<p>总结了一下过去的失败经验，一开始就想自己从头开始徒手写一个完整编译器的难度太高，首先在前端解析这里就会花费大量的精力，
+很难坚持下去。
+更何况作为一个 1096 的炮灰开发，根本挤不出这么多精力。
+而且时间过去了这么久，当初学的理论知识也已经差不多忘光了。</p>
+
+<p>于是索性决定前后端都用现成框架，只要最后能跑就行。毕竟写代码最重要的就是开心。</p>
+
+<p>去 Github 上找了一个叫 PLY 的库，就是 Python 版的 lex 和 yacc， 后端毫无疑问的选择了 LLVM，毕竟大家用过都说好。</p>
+
+<p>然后一想，反正都偷懒了，后端干脆也用 Python 写算了，以前看过一个叫 numba 的项目,
+自己维护了一个叫 llvmlite 的 LLVM Python 绑定，看起来还不错。于是就拿 PLY 和 llvmlite 开始搞了。</p>
+
+<p>以前在学校上编译原理课的时候写过一个<a href="https://github.com/Mithrilwoodrat/simple_complier">玩具编译器前端</a>
+，支持一种叫 TEST 的简易语言，当时没能把后端一起写完，现在只需要把前端改成 PLY 的形式，在加上代码生成就搞定了。</p>
+
+<p>于是信心满满的写了一堆 TODO，想着星期天不加班的时候就可以搞定了。</p>
+
+<h2 id="2">2</h2>
+
+<p>花了几天把TEST语言的前端转成了 PLY 的形式，并且也把 AST 写好了，但是觉得有很多地方写的有问题。
+请教了同事后，同事推荐了一个叫 <a href="https://github.com/eliben/pycparser">pycparser</a> 的基于 PLY 解析 C 语言的库,
+花了几天时间研究了下，然后结合 <a href="https://pragprog.com/book/tpdsl/language-implementation-patterns">language-implementation-patterns</a>，重构了生成的 AST 类。
+将原本递归调用每个 class 中的 Serialize 函数改为基于 Visitor 模式来调用，并添加了简单的语义检查。</p>
+
+<p>动手写后端的时候发现， llvmlite 看起来很美好，但是和 LLVM 版本的是绑定的，而且很多地方缺少文档。
+想起最近写引擎的经验，决定干脆前端用 PLY 解析出 AST 后序列化传给 C++，
+C++ 反序列化出 AST 后再调用 LLVM API 来生成代码。</p>
+
+<p>之前的项目里用到过一个叫 <a href="https://github.com/CoreSecurity/impacket/blob/master/impacket/structure.py">structure.py</a>
+的序列化库，因为以后可能还需要用到，就选它来练练手，放弃了 pb 之类的框架。</p>
+
+<h2 id="3">3</h2>
+
+<p>中途过年回家玩了两个星期，花了几天时间重新找回了写代码的状态。</p>
+
+<p>按照之前的计划开始写 C++ 读取序列化文件的模块，跟 Python 比起来写 C++ 真的太痛苦了。
+虽然工作中也需要用到 C++，如果可以选的话我还是愿意用 Python，就算是 C 或者 Go 用起来都比 C++ 舒服很多。</p>
+
+<p>周末的时间太少，调一个 C++ 的 bug 基本就过完一天了。进度有些缓慢。
+不过，想清楚序列化不过是结构体套结构体而已，也不是那么复杂。</p>
+
+<p>序列化 AST 的时候，一个需要注意的地方有几个:</p>
+
+<ul>
+  <li>
+    <p>需要单独写一个字符串表，
+其他类里的字符串在序列化的时候都得转换成数字ID（在字符串中的索引）</p>
+  </li>
+  <li>
+    <p>每个结构体需要有一个固定位置的值来确定类型</p>
+  </li>
+  <li>
+    <p>如果是一个结构体中有一个数组类型的字段，该字段中填入的每个结构体都得带上一个字段写明该结构的大小。</p>
+  </li>
+  <li>
+    <p>序列化与反序列化需要按照同样的字节类型，如在 structure.py 中，<code class="language-plaintext highlighter-rouge">&lt;</code> 符号表示按小端的字节类型生成，
+C++ 加载时需要用到 GCC 的 <code class="language-plaintext highlighter-rouge">__attribute__((packed))</code> 扩展。</p>
+  </li>
+</ul>
+
+<h2 id="4">4</h2>
+
+<p>参照 LLVM 的官方文档 <a href="http://llvm.org/docs/tutorial/index.html">Implementing a Language with LLVM</a>，
+实现了 TEST 语言的部分特性的代码生成（生成 LLVM IR）。但是只能通过 LLVM 的 dump API 打印，还不能跑。</p>
+
+<p>TEST 语言是一个很简陋的仿 C 语言，大概长的像这样：</p>
+
+<pre><code class="language-C">{
+  int i;
+  int abc;
+  read(abc);
+  for(i=1; i&lt; 10; i = i+1)
+  {
+      abc = abc + 1;
+  }
+  write(abc);
+}
+</code></pre>
+
+<p>只支持最基本的代码块、声明、赋值、循环语句（Control Flow），以及内置的两个函数(read, write)。
+目前为止，我只实现了前3个功能，控制流和函数调用比较复杂，暂时没有实现。</p>
+
+<p>转念一想，反正都写到这里了，不如按照 C 语言的语法多支持一些特性。
+比如支持函数，函数调用，条件语句（if/else)等。</p>
+
+<h2 id="5">5</h2>
+
+<p>按照之前的计划前端支持了函数，if 语句， while 语句。</p>
+
+<p>但是又遇到了几个新的问题：</p>
+
+<ul>
+  <li>
+    <p>之前的声明和赋值是通过一个全局的符号表，遇到声明就创建符号，遇到赋值就将值插入符号表，
+遇到使用符号时就从符号表中取出对应符号的值。但是这么做其实没有真正在运行时支持变量，
+应该按照 LLVM 标准按使用 store/load 指令的方式来生产代码。</p>
+  </li>
+  <li>
+    <p>在 X86 32位下，函数调用的方式是通过 caller 将参数压栈， callee 去栈中对应位置取出参数。
+在 64 位下，寄存器够用的情况会优先使用寄存器来传参。对应 LLVM 模型，也应该使用 store/load 指令。
+介于之前没有支持，现在无法支持带参数的函数调用。</p>
+  </li>
+  <li>
+    <p>TEST 语言中没有实现 return 语句，默认最外层就是一个代码块，我给最外层添加了一个匿名函数，
+并且把代码块最后一条语句的返回的 Value 作为函数的返回值返回了。要支持函数就得支持 return 语句。</p>
+  </li>
+</ul>
+
+<h2 id="6">6</h2>
+
+<p>实现了函数定义，以及变量的支持，这两部分参考 LLVM 文档一步步搞就行，没有遇到过大的问题。
+在添加 if 和 break continue 语句后，才发现之前的设计是直接从 AST 生成代码，没有考虑到基本快划分的问题。</p>
+
+<p>于是想了一个比较 low 的方案。</p>
+
+<p>在生成 While 语句时先将 Loop Start 和 Loop End 两个标签添加到一个结构体中，并压栈。
+如果在 StatementList 中遇到 Break Continue 以及 Return 的时候停止后面的代码生成，
+并按栈顶中的标签生成对应的跳转(Break 跳到 Loop End， Continue 跳到 Loop Start)。
+解析完 While 后将结构体从栈中弹出。</p>
+
+<p>因为 If 语句会生成 3 个标签(THEN ELSE ENDIF), 并且在 THEN 和 ELSE 中需要添加一个跳转语句
+到 ENDIF ， 如果 THEN 和 ELSE 的 StatementList 中有 Break Continue 或 Retrun 则不生成这个跳转。</p>
+
+<h2 id="7">7</h2>
+
+<p>之前的临时方案问题比较多，于是重新在 Python 前端添加了划分基本块的功能，参考 <a href="https://en.wikipedia.org/wiki/Basic_block">https://en.wikipedia.org/wiki/Basic_block</a>.</p>
+
+<ul>
+  <li>
+    <p>一个基本块只有一个 Entry Point，只能由其他某个地方的 jmp 指令跳转到本基本块</p>
+  </li>
+  <li>
+    <p>一个基本块只有一个 Exit Point， 意味着基本块中最后一条指令将跳转到其他某个基本块中，
+并且中间不能有跳转指令（可以有 call 指令）</p>
+  </li>
+  <li>
+    <p>基本块中的指令按顺序从上往下执行</p>
+  </li>
+  <li>
+    <p>基本块中，两条指令之间不能有其他操作</p>
+  </li>
+</ul>
+
+<p>需要将 AST 中 IF 和 While 节点替换成 比较，跳转、Labal 等节点。</p>
+
+<p>原来的 Visitor class 是从 pycparser 中拿过来的，不支持访问父节点动态修改 AST 树。</p>
+
+<pre><code class="language-Python">class NodeVisitor(object):
+    def visit(self, node):
+        method = 'visit_' + node.__class__.__name__
+        visitor = getattr(self, method, self.generic_visit)
+        return visitor(node)
+
+    def generic_visit(self, node):
+        for c in node.children():
+            self.visit(c)
+</code></pre>
+
+<p>想了一个比较取巧的方法，因为 Visitor class 遍历整棵树时，
+访问子节点之前肯定是先访问了父节点再调用 visit 函数的，所以只用在 visit 函数里加上一个 parent 参数，
+在父节点调用 visit 函数时将本节点作为参数传入即可。</p>
+
+<pre><code class="language-Python">class SpecialVisitor(object):
+    def visit(self, node, parent):
+        method = 'visit_' + node.__class__.__name__
+        visitor = getattr(self, method, self.generic_visit)
+        # deep first
+        for c in node.children():
+            self.visit(c, node)
+        return visitor(node, parent)
+
+    def generic_visit(self, node, parent):
+        for c in node.children():
+            self.visit(c, node)
+</code></pre>
+
+<h2 id="8">8</h2>
+
+<p>在前端划分好基本块再生成代码就没有之前的问题了，不足的就是目前的划分代码不完善，生成的中间代码有冗余，也没有做死代码消除等优化。
+不过不影响流程。</p>
+
+<p>加上了目标文件生成功能，并且将后端编译为 .so 动态链接库， 在 Python 端由 ctypes 调用。</p>
+
+<p>示例 test3.ns</p>
+
+<pre><code class="language-C">int fuck()
+{
+    int i;
+    i = 1;
+    while(1) {
+        i = i + 1;
+        if (i &gt; 10) {
+            break;
+        }
+    }
+    return i;
+}
+</code></pre>
+
+<p>调用 <code class="language-plaintext highlighter-rouge">clang -Xclang -ast-dump -fsyntax-only </code> 解析出的 AST 如下</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>TranslationUnitDecl 0x22d3880 &lt;&lt;invalid sloc&gt;&gt; &lt;invalid sloc&gt;
+|-TypedefDecl 0x22d3dc8 &lt;&lt;invalid sloc&gt;&gt; &lt;invalid sloc&gt; implicit __int128_t '__int128'
+| `-BuiltinType 0x22d3af0 '__int128'
+|-TypedefDecl 0x22d3e28 &lt;&lt;invalid sloc&gt;&gt; &lt;invalid sloc&gt; implicit __uint128_t 'unsigned __int128'
+| `-BuiltinType 0x22d3b10 'unsigned __int128'
+|-TypedefDecl 0x22d40e8 &lt;&lt;invalid sloc&gt;&gt; &lt;invalid sloc&gt; implicit __NSConstantString 'struct __NSConstantString_tag'
+| `-RecordType 0x22d3f00 'struct __NSConstantString_tag'
+|   `-Record 0x22d3e78 '__NSConstantString_tag'
+|-TypedefDecl 0x22d4178 &lt;&lt;invalid sloc&gt;&gt; &lt;invalid sloc&gt; implicit __builtin_ms_va_list 'char *'
+| `-PointerType 0x22d4140 'char *'
+|   `-BuiltinType 0x22d3910 'char'
+|-TypedefDecl 0x22d4428 &lt;&lt;invalid sloc&gt;&gt; &lt;invalid sloc&gt; implicit __builtin_va_list 'struct __va_list_tag [1]'
+| `-ConstantArrayType 0x22d43d0 'struct __va_list_tag [1]' 1 
+|   `-RecordType 0x22d4250 'struct __va_list_tag'
+|     `-Record 0x22d41c8 '__va_list_tag'
+`-FunctionDecl 0x22d44c8 &lt;tmp.c:1:1, line:12:1&gt; line:1:5 fuck 'int ()'
+  `-CompoundStmt 0x232b4e8 &lt;line:2:1, line:12:1&gt;
+    |-DeclStmt 0x232b1e0 &lt;line:3:2, col:7&gt;
+    | `-VarDecl 0x232b180 &lt;col:2, col:6&gt; col:6 used i 'int'
+    |-BinaryOperator 0x232b240 &lt;line:4:2, col:6&gt; 'int' '='
+    | |-DeclRefExpr 0x232b1f8 &lt;col:2&gt; 'int' lvalue Var 0x232b180 'i' 'int'
+    | `-IntegerLiteral 0x232b220 &lt;col:6&gt; 'int' 1
+    |-WhileStmt 0x232b470 &lt;line:5:2, line:10:5&gt;
+    | |-&lt;&lt;&lt;NULL&gt;&gt;&gt;
+    | |-IntegerLiteral 0x232b268 &lt;line:5:8&gt; 'int' 1
+    | `-CompoundStmt 0x232b448 &lt;col:11, line:10:5&gt;
+    |   |-BinaryOperator 0x232b338 &lt;line:6:9, col:17&gt; 'int' '='
+    |   | |-DeclRefExpr 0x232b288 &lt;col:9&gt; 'int' lvalue Var 0x232b180 'i' 'int'
+    |   | `-BinaryOperator 0x232b310 &lt;col:13, col:17&gt; 'int' '+'
+    |   |   |-ImplicitCastExpr 0x232b2f8 &lt;col:13&gt; 'int' &lt;LValueToRValue&gt;
+    |   |   | `-DeclRefExpr 0x232b2b0 &lt;col:13&gt; 'int' lvalue Var 0x232b180 'i' 'int'
+    |   |   `-IntegerLiteral 0x232b2d8 &lt;col:17&gt; 'int' 1
+    |   `-IfStmt 0x232b410 &lt;line:7:3, line:9:6&gt;
+    |     |-&lt;&lt;&lt;NULL&gt;&gt;&gt;
+    |     |-&lt;&lt;&lt;NULL&gt;&gt;&gt;
+    |     |-BinaryOperator 0x232b3c0 &lt;line:7:7, col:11&gt; 'int' '&gt;'
+    |     | |-ImplicitCastExpr 0x232b3a8 &lt;col:7&gt; 'int' &lt;LValueToRValue&gt;
+    |     | | `-DeclRefExpr 0x232b360 &lt;col:7&gt; 'int' lvalue Var 0x232b180 'i' 'int'
+    |     | `-IntegerLiteral 0x232b388 &lt;col:11&gt; 'int' 10
+    |     |-CompoundStmt 0x232b3f0 &lt;col:15, line:9:6&gt;
+    |     | `-BreakStmt 0x232b3e8 &lt;line:8:7&gt;
+    |     `-&lt;&lt;&lt;NULL&gt;&gt;&gt;
+    `-ReturnStmt 0x232b4d0 &lt;line:11:2, col:9&gt;
+      `-ImplicitCastExpr 0x232b4b8 &lt;col:9&gt; 'int' &lt;LValueToRValue&gt;
+        `-DeclRefExpr 0x232b490 &lt;col:9&gt; 'int' lvalue Var 0x232b180 'i' 'int'
+</code></pre></div></div>
+
+<p>PLY 前端生成的 AST 如下</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>AST: 
+  FuncList: 
+    Function: return_type=int
+      MethodSymbol: name=fuck
+      DeclarationList: 
+      CodeBlock: 
+        DeclarationList: 
+          Declaration: _type=int
+            VariableSymbol: name=i
+        StmtList: 
+          AssignmentStmt: 
+            AssignmentExpr: 
+              VariableSymbol: name=i
+              Const: val=1
+          WhileStmt: 
+            Const: val=1
+            StmtList: 
+              AssignmentStmt: 
+                AssignmentExpr: 
+                  VariableSymbol: name=i
+                  BinaryOp: op=+
+                    VariableSymbol: name=i
+                    Const: val=1
+              IfStmt: 
+                BinaryOp: op=&gt;
+                  VariableSymbol: name=i
+                  Const: val=10
+                StmtList: 
+                  BreakStmt: 
+          ReturnStmt: 
+            VariableSymbol: name=i
+</code></pre></div></div>
+
+<p>生成的 LLVM IR 如下</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>define i32 @fuck() {
+entry:
+  %i = alloca i32
+  store i32 1, i32* %i
+  br i1 true, label %L4, label %L5
+
+L4:                                               ; preds = %L3, %entry
+  %i1 = load i32, i32* %i
+  %addtmp = add i32 %i1, 1
+  store i32 %addtmp, i32* %i
+  %i2 = load i32, i32* %i
+  %cmptmp = icmp ugt i32 %i2, 10
+  %0 = zext i1 %cmptmp to i32
+  %1 = icmp ne i32 %0, 0
+  br i1 %1, label %L1, label %L2
+
+L1:                                               ; preds = %L4
+  br label %L5
+
+L2:                                               ; preds = %L4
+  br label %L3
+
+L3:                                               ; preds = %L2
+  br i1 true, label %L4, label %L5
+
+L5:                                               ; preds = %L3, %L1, %entry
+  %i3 = load i32, i32* %i
+  ret i32 %i3
+}
+</code></pre></div></div>
+
+<p>将生成的目标文件与 main.c 一起编译</p>
+
+<p>main.c</p>
+
+<pre><code class="language-C">#include &lt;stdio.h&gt;
+
+extern int fuck(void);
+
+int main()
+{
+    printf("%d\n", fuck());
+    return 0;
+}
+</code></pre>
+
+<p>输出如下</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ python2 compiler.py tests/test3.ns fuck.o
+$ clang main.c fuck.o -o main
+$ ./main
+11
+</code></pre></div></div>
+
+<p>目前为止还剩下 支持多种类型，支持 extern 声明(用以调用其他模块中的函数，如 glibc 中的函数)，支持 C 语言中的其他特性(数组、指针、结构体)，
+以及支持预处理。</p>
+
+<p>未完待续……</p>
+
+  </article>
+
+</div>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function () {
+        var s = document.createElement('script'); s.async = true;
+        s.type = 'text/javascript';
+        s.src = '//' + disqus_shortname + '.disqus.com/count.js';
+        (document.getElementsByTagName('HEAD')[0] || document.getElementsByTagName('BODY')[0]).appendChild(s);
+    }());
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/raphael/2.1.0/raphael-min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+<script src="https://flowchart.js.org/flowchart-latest.js"></script>
+<script src="/js/highlight.min.js"></script>
+<script src="/js/toc.js"></script>
+<script src="/js/qrcode.min.js"></script>
+<script>
+if (!String.prototype.format) {
+    String.prototype.format = function() {
+        var args = arguments;
+        return this.replace(/{(\d+)}/g, function(match, number) { 
+            return typeof args[number] != 'undefined'
+                ? args[number]
+                : match
+            ;
+        });
+    };
+}
+
+$('pre code').each(function(i, block) {
+    hljs.highlightBlock(block);
+});
+
+$('.language-flow').each(function(i, block) {
+    console.log(block);
+    code = $(this).text();
+    diagram = flowchart.parse(code);
+    canvas_id = 'flow'+ i;
+    console.log(canvas_id);
+    temp = "<div id='{0}'> </div>".format(canvas_id);
+    console.log(temp);
+    $(this).html(temp);
+    diagram.drawSVG(canvas_id, {
+        'x': 0,
+        'y': 0,
+        'line-width': 3,
+        'line-length': 50,
+        'text-margin': 10,
+        'font-size': 14,
+    });	
+});
+
+$('#toc').toc({
+    noBackToTopLinks: true,
+    listType: 'ul',
+    title: 'TOC',
+});
+
+var url = location.href;
+console.log(url);
+var qrcode = new QRCode("qrcode", {
+    text: url,
+    width: 128,
+    height: 128,
+    colorDark : "#000000",
+    colorLight : "#ffffff",
+    correctLevel : QRCode.CorrectLevel.H
+});
+
+$(document).ready(function () {
+    $('#show_qrcode').on('mouseenter', function () {
+        $('#qrcode').show();
+        $(this).css({
+            "text-decoration": "underline"
+        });
+    }).on('mouseleave', function () {
+        $('#qrcode').hide();
+        $(this).css({
+            "text-decoration": ''
+        });
+    });;
+});
+</script>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col  footer-col-1">
+        <ul class="contact-list">
+	  <li>
+          <li><a href="mailto:mithrilwoodrat@gmail.com">mithrilwoodrat@gmail.com</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col  footer-col-2">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/Mithrilwoodrat">
+              <span class="icon  icon--github">
+                <svg viewBox="0 0 16 16">
+                  <path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/>
+                </svg>
+              </span>
+              <span class="username">Mithrilwoodrat</span> 
+            </a>
+          </li>
+          
+        </ul>
+      </div>
+  </div>
+</footer>
+
+<script>
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-66599686-1', 'auto');
+  ga('send', 'pageview');
+
+</script>
+</body>
+</html>

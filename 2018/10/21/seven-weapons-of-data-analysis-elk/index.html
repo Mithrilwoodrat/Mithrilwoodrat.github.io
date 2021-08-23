@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>
+    数据分析的七种武器-elk
+    </title>
+  <link type="application/atom+xml" rel="alternate" href="/feed.xml" title="虚实" />
+  
+  <style>
+  table{
+    border-left:1px solid #000000;border-top:1px solid #000000;
+    width: 100%;
+    word-wrap:break-word; word-break:break-all;
+  }
+  table th{
+  text-align:center;
+  }
+  table th,td{
+    border-right:1px solid #000000;border-bottom:1px solid #000000;
+  }
+  </style>
+
+  <meta name="description" content="什么是 ELK">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/toc.css">
+  <link rel="canonical" href="/2018/10/21/seven-weapons-of-data-analysis-elk/">
+  <link rel="alternate" type="application/rss+xml" title="虚实" href="/feed.xml" />
+  <link rel="stylesheet" href="/css/highlight.min.css">
+  <link href="//cdn.staticfile.org/font-awesome/3.2.1/css/font-awesome.min.css" rel="stylesheet"media="all">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+    <div>
+      <a class="site-title" href="/">虚实</a>
+      <div class="site-pages">
+		<a class="site-page" href="/archive/">归档</a>
+		<a class="site-page" href="/categories/">分类</a>
+		<a class="site-page" href="/about/">关于</a>
+		<a class="site-page" href="/friend-links/">友情链接</a>
+        <a class="site-page" href="/recommends/">推荐</a>
+      </div>
+      <p class="site-sub-title">记录下折腾和学习的过程</p>
+    </div>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <div class="post">
+
+  <header class="post-header">
+    <h1 class="post-title">数据分析的七种武器-elk</h1>
+    <p class="post-meta">Oct 21, 2018 • admin</p>
+
+	<p class="post-meta"> categories :   <a href="/categories/#数据分析"> 数据分析 </a>  <a href="/categories/#ELK"> ELK </a>  </p>
+    <div id="show_qrcode">
+        <a>扫描二维码</a>
+        <div id="qrcode" style="display:none;position:absolute;z-index:1"></div>
+    </div>
+  </header>
+  <div class="nav">
+      <div id="toc" class="toc"></div>
+  </div>
+  <article class="post-content">
+    <h2 id="什么是-elk">什么是 ELK</h2>
+
+<p>ELK 是三个开源项目的首字母缩写,分别为： Elasticsearch，Logstash 和 Kibana。</p>
+
+<h2 id="分别解决什么问题">分别解决什么问题</h2>
+
+<h3 id="1-logstash">1. <a href="https://www.elastic.co/products/logstash">Logstash</a></h3>
+
+<p>Logstash是一个服务器端数据接收、处理、转发工具，可同时从多个源获取数据，将其转换，然后将其发送到像Elasticsearch这样的“存储”中。官方称其为 “server-side data processing pipeline ” ，即数据处理管道。</p>
+
+<ul>
+  <li>
+    <p>Logstash 可以接受多种不同来源的日志数据，包括Log、metrics、web 应用日志等。</p>
+  </li>
+  <li>
+    <p>Logstash 可以解析、富化、转换接收到的数据。</p>
+  </li>
+  <li>
+    <p>Logstash 可以将结果数据发送到对应的存储中（可以有多个、并且支持 ES、HDFS等多种发送对象）</p>
+  </li>
+</ul>
+
+<h3 id="2-elasticsearch">2. <a href="https://www.elastic.co/cn/products/elasticsearch">ElasticSearch</a></h3>
+
+<p>Elasticsearch 是一个分布式的 RESTful 风格的检索和数据分析引擎，能够解决不同场景下的各种搜索、统计分析问题。是 ELK 的核心。</p>
+
+<ul>
+  <li>
+    <p>分布式，高可用，和数据库相比水平扩容更容易。</p>
+  </li>
+  <li>
+    <p>提供近实时的检索能力，安全场景下需要能及时的发现问题，问题发现的越晚损失越大。传统 数据库在日志量大的情况下表现有限，不适合用来做日志分析。</p>
+  </li>
+  <li>
+    <p>除了检索之外还提供 Aggregation 聚合的功能，虽然使用起来没有 Hadoop MapReduce 那么自由，仍然能支持统计后可视化、近实时分析告警等功能。</p>
+  </li>
+</ul>
+
+<h3 id="3-kibana">3 <a href="https://www.elastic.co/cn/products/kibana">Kibana</a></h3>
+
+<p>Kibana 是 ElasticSearch 的官方可视化工具。通过 Kibana，用户能使用 ES 中已有的数据制作各种可视化图表，并且能可视化的在 ES 中检索数据。</p>
+
+<h2 id="logstash-实战接收解析-syslog">Logstash 实战，接收解析 syslog</h2>
+
+<h3 id="1syslog-简介">1.syslog 简介</h3>
+
+<p>安全设备通常都支持配置通过 syslog 发送设备产生的告警日志、平台日志（管理日志 ，管理员登录日志，系统运行日志）等。</p>
+
+<p>syslog （https://en.wikipedia.org/wiki/Syslog）是一种网络设备常用的日志标准。RFC 5424 中定义了统一的日志格式，以及传输的方法（使用 UDP 协议传输，默认发送的目标端口为 514，通常一个 UDP 包携带一条 syslog）。</p>
+
+<p>其中 syslog 标准结构为 <code class="language-plaintext highlighter-rouge">PRI  | HEADER | MSG</code>，其中 HEADER 由 TIMESTAMP 和 HOSTNAME 组成。每个 syslog 的总大小需小于等于 1024 字节。</p>
+
+<p><img src="/imgs/syslog.png" alt="" /></p>
+
+<h3 id="2logstash-简介">2.Logstash 简介</h3>
+
+<p>Logstash 分为 input -&gt; filter -&gt; output 三个模块。 每个模块都支持以 JRuby 编写自定义插件，并且有丰富的社区支持。input、output 自带多种输入输出的支持，并且支持 codecs 功能，即对流入流出的数据进行编解码。 filter 对输入的数据进行修改。</p>
+
+<p>为了接收、解析归一化安全设备的 syslog，我们主要用到 Input Plugins 中的 Syslog Input Plugin，Filter Plugins 中的 Mutate 和 Grok 组件， Output Plugins 中的 ElasticSearch output plugin， Kafka output plugin， stdout output plugin（用于调试）。</p>
+
+<p>Logstash 的默认的配置文件结构如下</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>input { 
+  ... 
+} 
+ 
+filter { 
+  ... 
+} 
+ 
+output { 
+  ... 
+}
+</code></pre></div></div>
+
+<h3 id="3配置数据接收">3.配置数据接收</h3>
+
+<p>input 部分接收 syslog 输入，参考 https://www.elastic.co/guide/en/logstash/5.6/plugins-inputs-syslog.html 。给接收到的 message 添加一个 type 字段，方便和其他来源的 message 做区分。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>input { 
+    syslog{ 
+        port =&gt; 514 
+        type =&gt; "device-syslog" 
+    } 
+} 
+</code></pre></div></div>
+
+<h3 id="4配置数据解析转换">4.配置数据解析转换</h3>
+
+<p>syslog input plugin 接收的 syslog 消息中 msg 部分默认会解析到 Logstash 消息的 message 字段中。</p>
+
+<p>例如下面的某厂商的 IDS 告警，使用 syslog input 接收，然后直接使用  file output plugin 写到本地文件，可以看到</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{"severity":0,"@timestamp":"2017-09-18T19:39:42.574Z","@version":"1","host":"172.16.0.1",
+"message":"&lt;5&gt;time:2017-09-19 15:15:59;danger_degree:2;breaking_sighn:0;event:[20381]HTTP服务暴力猜测口令攻击;src_addr:192.168.108.6;src_port:10080;dst_addr:59.108.125.206;dst_port:80;proto:TCP.HTTP;user:",
+"type": "device-syslog","priority":0,"facility":0,"severity_label":"Emergency","tags":[],"facility_label":"kernel"}  
+</code></pre></div></div>
+
+<p>我们要做的是解析出 “message” 字段中我们需要的信息。这时候就需要用到 Grok 插件了。</p>
+
+<p><a href="https://www.elastic.co/guide/en/logstash/5.6/plugins-filters-grok.html">Grok</a> 使用 patten match 的方式，将非结构化的数据转换为结构化数据（正则匹配提取）。</p>
+
+<p>grok pattern 的格式为 <code class="language-plaintext highlighter-rouge">%{SYNTAX:SEMANTIC}</code>， 其中 SYNATX 是预先定义好的 pattern（如 IP、NUMBER 等），SEMANTIC 为目标提取出的字段的名字。</p>
+
+<p>例如字符串 “3.44 55.3.244.1” 就可以用 pattern <code class="language-plaintext highlighter-rouge">"%{NUMBER:duration} %{IP:client}"</code> 匹配，匹配后生成的消息为 </p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{ 
+  "duration": 3.44, 
+  "client": "55.3.244.1" 
+}
+</code></pre></div></div>
+
+<p>Logstash 中内置了相当多的 pattern <a href="https://github.com/logstash-plugins/logstash-patterns-core/tree/master/patterns">https://github.com/logstash-plugins/logstash-patterns-core/tree/master/patterns</a>，其中包括了解析 NetScreen、Cisco 等厂商的防火墙日志，以及常用的开源IDS （bro） 等的pattern。</p>
+
+<p>gork-pattern <a href="https://github.com/logstash-plugins/logstash-patterns-core/blob/master/patterns/grok-patterns">https://github.com/logstash-plugins/logstash-patterns-core/blob/master/patterns/grok-patterns</a> 目录中包含了许多有用的pattern，如上面例子中用到的 NUMBER、IP 等，使用这些 pattern 组合成的表达式基本上可以满足大部分的解析场景了。</p>
+
+<p>除了内置的 pattern ，Grok 还支持使用 Oniguruma（https://github.com/kkos/oniguruma/blob/master/doc/RE）格式的正则表达式定制 pattern。同时，因为 Grok 表达式本身也是基于正则表达式实现的，所以 Grok 表达式中能将预定义的 pattern 和 正则表达式混合编写。具体参考上面给出的 grok filter plugin 的文档。</p>
+
+<p>上面例子中 syslog 的 message 字段如下</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>"message":"&lt;5&gt;time:2017-09-19 15:15:59;danger_degree:2;breaking_sighn:0;event:[20381]HTTP服务暴力猜测口令攻击;src_addr:192.168.108.6;src_port:10080;dst_addr:59.108.125.206;dst_port:80;proto:TCP.HTTP;user:"
+</code></pre></div></div>
+
+<p>对应的 Grok 表达式如下</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>time:%{TIMESTAMP_ISO8601:start_time};danger_degree:%{INT:danger_degree}%{DATA};event:%{DATA:event};src_addr:%{IP:sip};src_port:%{INT:sport};dst_addr:%{IP:dip};dst_port:%{INT:dport};proto:%{DATA:proto};user:%{DATA:user}
+</code></pre></div></div>
+
+<p>编写调试 Grok 表达式时，可以使用 Kinaba 自带Dev Tools 中的 Grok Debugger，  或者在 <a href="http://grokdebug.herokuapp.com">http://grokdebug.herokuapp.com</a>和 <a href="http://grokconstructor.appspot.com/">http://grokconstructor.appspot.com/</a> 中在线调试。</p>
+
+<p>写完 grok 表达式后，filter 部分中还需要加上 if 语句判断数据是不是来自指定的设备，以及给该消息加上来自某某设备的标记。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>filter { 
+    if [type] == "device-syslog" { 
+        if [host] == "172.16.0.1" { 
+            grok { 
+                match =&gt; { "message" =&gt; 'time:%{TIMESTAMP_ISO8601:start_time};danger_degree:%{INT:danger_degree}%{DATA};event:%{DATA:event};src_addr:%{IP:sip};src_port:%{INT:sport};dst_addr:%{IP:dip};dst_port:%{INT:dport};proto:%{DATA:proto};user:%{DATA:user}'} 
+            } 
+            mutate { 
+                add_field =&gt; ["systype", "syslog"] 
+                add_field =&gt; ["devtype", "IDS"] 
+            } 
+        } 
+    } 
+}  
+</code></pre></div></div>
+<p> </p>
+
+<h3 id="5配置数据转发">5.配置数据转发</h3>
+
+<p>最后，需要配置 output，将 数据发送到指定的存储中。在御见安全态势感知平台中，我们使用了两级的 Logstash 架构，第一级的 Logstash 负责收集 syslog 等外部数据发送到 kafka 队列中，第二级Logstash 从 kafka中消费数据，存储到 HDFS 和 ES 中。入 kafka 的数据同时会被 Flink 消费，根据预定义的规则实时匹配发现威胁。</p>
+
+<p>以发送到 kafka 为例，配置 output 如下</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>output 
+{ 
+     if [type]== "device_syslog" { 
+        kafka 
+        { 
+            topic_id =&gt; "device_syslog" 
+            bootstrap_servers =&gt; "192.168.0.1:9092" 
+            codec=&gt;json 
+        } 
+    } 
+}  
+</code></pre></div></div>
+
+<h2 id="elasticsearch-实战">ElasticSearch 实战</h2>
+
+<h3 id="安装运行">安装&amp;运行</h3>
+
+<p>出于学习目的安装 ES 可以通过 docker 安装的方式，参考<a href="https://www.elastic.co/guide/en/elasticsearch/reference/current/docker.html">https://www.elastic.co/guide/en/elasticsearch/reference/current/docker.html</a> 。</p>
+
+<p>我们基于 ES 5.6.13 版本进行下面的操作。</p>
+
+<p>拉取 es 镜像</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>docker pull docker.elastic.co/elasticsearch/elasticsearch:5.6.13
+</code></pre></div></div>
+
+<p>使用如下命令启动 ElasticSearch</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>docker run -p 9200:9200 -p 9300:9300 -e "discovery.type=single-node" docker.elastic.co/elasticsearch/elasticsearch:5.6.13
+</code></pre></div></div>
+
+<p>验证启动成功: Docker 镜像启动的 ES 默认需要帐号密码进行 http basic auth 认证，默认的用户名为 elastic， 密码为 changeme。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>curl -uelastic:changeme 127.0.0.1:9200
+
+{
+  "name" : "sqcLgAk",
+  "cluster_name" : "docker-cluster",
+  "cluster_uuid" : "2FwttFhNQUuFIsnT-XxTtQ",
+  "version" : {
+    "number" : "5.6.13",
+    "build_hash" : "4d5320b",
+    "build_date" : "2018-10-30T19:05:08.237Z",
+    "build_snapshot" : false,
+    "lucene_version" : "6.6.1"
+  },
+  "tagline" : "You Know, for Search"
+}
+</code></pre></div></div>
+
+<h3 id="document">Document</h3>
+
+<p>Document 是 ElasticSearch 中最基础的可存储单位，格式为 JSON。 也就是说我们的数据都是以 json 格式输入到 ES 中的。</p>
+
+<p>我们以 elastic 官方 example <a href="https://github.com/elastic/examples">https://github.com/elastic/examples</a> 中的 <a href="https://raw.githubusercontent.com/elastic/examples/master/Common%20Data%20Formats/nginx_json_logs/nginx_json_logs">nginx json log</a> 为例，进行接下来的介绍。</p>
+
+<p>Nginx json log 的格式如下</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{"time": "17/May/2015:08:05:27 +0000", "remote_ip": "93.180.71.3", "remote_user": "-", "request": "GET /downloads/product_1 HTTP/1.1", "response": 304, "bytes": 0, "referrer": "-", "agent": "Debian APT-HTTP/1.3 (0.8.16~exp12ubuntu10.21)"}
+</code></pre></div></div>
+
+<h3 id="index">Index</h3>
+
+<p>Index(索引) 是 Document 的集合，同一类型的 Document 可以放到同一个 Index 中。</p>
+
+<h3 id="cat-indices">Cat Indices</h3>
+
+<p>访问 <code class="language-plaintext highlighter-rouge">_cat/indices</code> 查看现有索引。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>curl -uelastic:changeme -XGET '127.0.0.1:9200/_cat/indices?pretty'
+yellow open .monitoring-es-6-2019.03.13 -wP7KCK7SIuXlCOGOk6dhw 1 1 3 0 29.3kb 29.3kb
+yellow open .watches                    QHHhTeufRXiguIO50d3PIQ 1 1 4 0 35.3kb 35.3kb
+</code></pre></div></div>
+
+<h4 id="create-empty-index">Create Empty Index</h4>
+
+<p>发送 PUT 请求到 <code class="language-plaintext highlighter-rouge">host/&lt;index_name&gt;</code> 可以创建默认的索引</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>curl -uelastic:changeme -XPUT '127.0.0.1:9200/nginx_log/?pretty'
+{
+  "acknowledged" : true,
+  "shards_acknowledged" : true,
+  "index" : "nginx_log"
+}
+</code></pre></div></div>
+
+<p>可以看到默认创建的索引 mappings 为空。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>curl -uelastic:changeme -XGET '127.0.0.1:9200/nginx_log/?pretty'
+{
+  "nginx_log" : {
+    "aliases" : { },
+    "mappings" : { },
+    "settings" : {
+      "index" : {
+        "creation_date" : "1544187983345",
+        "number_of_shards" : "5",
+        "number_of_replicas" : "1",
+        "uuid" : "IMjybQOYRIqmE2SFDbiicg",
+        "version" : {
+          "created" : "5061399"
+        },
+        "provided_name" : "nginx_log"
+      }
+    }
+  }
+}
+</code></pre></div></div>
+
+<h4 id="create-default-mapping">Create Default Mapping</h4>
+
+<p>存储在 ES 中的每一个 document 都有一个唯一标识，可以由 <code class="language-plaintext highlighter-rouge">{host}/{index}/{type}/{id}</code> 索引到。</p>
+
+<p>使用 HTTP POST 请求提交 json 到 <code class="language-plaintext highlighter-rouge">/{index}/{type}/</code> 时，将自动创建 document id.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>curl -uelastic:changeme -XPOST '127.0.0.1:9200/nginx_log/log/?pretty' -d @nginx_log_example.json
+
+{
+  "_index" : "nginx_log",
+  "_type" : "log",
+  "_id" : "AWeIzUw3ny5jTHvrzHew",
+  "_version" : 1,
+  "result" : "created",
+  "_shards" : {
+    "total" : 2,
+    "successful" : 1,
+    "failed" : 0
+  },
+  "created" : true
+}
+</code></pre></div></div>
+
+<p>可以看到自动创建的 id 为 <code class="language-plaintext highlighter-rouge">"_id" : "AWeIzUw3ny5jTHvrzHew"</code>，所以访问 <code class="language-plaintext highlighter-rouge">/nginx_log/log/AWeIzUw3ny5jTHvrzHew/</code> 即可访问对应的 Document。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>curl -uelastic:changeme -XGET '127.0.0.1:9200/nginx_log/log/AWeIzUw3ny5jTHvrzHew/?pretty'
+{
+  "_index" : "nginx_log",
+  "_type" : "log",
+  "_id" : "AWeIzUw3ny5jTHvrzHew",
+  "_version" : 1,
+  "found" : true,
+  "_source" : {
+    "time" : "17/May/2015:08:05:27 +0000",
+    "remote_ip" : "93.180.71.3",
+    "remote_user" : "-",
+    "request" : "GET /downloads/product_1 HTTP/1.1",
+    "response" : 304,
+    "bytes" : 0,
+    "referrer" : "-",
+    "agent" : "Debian APT-HTTP/1.3 (0.8.16~exp12ubuntu10.21)"
+  }
+}
+</code></pre></div></div>
+
+<p>curl 对应的 <code class="language-plaintext highlighter-rouge">index/type/_mapping</code>，可以看到 ES 已经帮我们建好了默认的 mapping。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>curl -uelastic:changeme -XGET '127.0.0.1:9200/nginx_log/log/_mapping?pretty'
+
+{
+  "nginx_log" : {
+    "mappings" : {
+      "log" : {
+        "properties" : {
+          "agent" : {
+            "type" : "text",
+            "fields" : {
+              "keyword" : {
+                "type" : "keyword",
+                "ignore_above" : 256
+              }
+            }
+          },
+          "bytes" : {
+            "type" : "long"
+          },
+          "referrer" : {
+            "type" : "text",
+            "fields" : {
+              "keyword" : {
+                "type" : "keyword",
+                "ignore_above" : 256
+              }
+            }
+          },
+          "remote_ip" : {
+            "type" : "text",
+            "fields" : {
+              "keyword" : {
+                "type" : "keyword",
+                "ignore_above" : 256
+              }
+            }
+          },
+          "remote_user" : {
+            "type" : "text",
+            "fields" : {
+              "keyword" : {
+                "type" : "keyword",
+                "ignore_above" : 256
+              }
+            }
+          },
+          "request" : {
+            "type" : "text",
+            "fields" : {
+              "keyword" : {
+                "type" : "keyword",
+                "ignore_above" : 256
+              }
+            }
+          },
+          "response" : {
+            "type" : "long"
+          },
+          "time" : {
+            "type" : "text",
+            "fields" : {
+              "keyword" : {
+                "type" : "keyword",
+                "ignore_above" : 256
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+</code></pre></div></div>
+
+<h4 id="delete-index">DELETE Index</h4>
+
+<p>发送 http delete 请求到对应索引 url 即可删除索引。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>curl -XDELETE -uelastic:changeme '127.0.0.1:9200/nginx_log/?pretty'
+{
+  "acknowledged" : true
+}
+</code></pre></div></div>
+
+<h4 id="set-mapping-manually">SET Mapping Manually</h4>
+
+<p>ES index 的 mapping 一经设置后便无法修改，如果要修改 ES 的 mapping 则需要删除旧的索引重新创建。</p>
+
+<p>为了方便检索，我们把 remote_ip 字段设置为 ip 格式，time 设置为 ES 的 date 格式(需要制定 format 为 <code class="language-plaintext highlighter-rouge">dd/MMM/yyyy:HH:mm:ss Z</code> 参考<a href="https://www.elastic.co/guide/en/elasticsearch/reference/current/date.html">date types</a>)。参考 <a href="https://github.com/Mithrilwoodrat/seven-weapons-of-data-analysis/blob/master/elasticsearch/nginx_log_mapping.json">nginx_log_mapping.json</a></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>curl -XDELETE -uelastic:changeme '127.0.0.1:9200/nginx_log/?pretty'
+curl -uelastic:changeme -XPUT '127.0.0.1:9200/nginx_log/?pretty'
+curl -uelastic:changeme -XPUT '127.0.0.1:9200/nginx_log/_mapping/log/?pretty' -d @nginx_log_mapping.json
+</code></pre></div></div>
+
+<p>再 curl 对应的 mapping，可以看到已经创建成功。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>curl -uelastic:changeme -XGET '127.0.0.1:9200/nginx_log/log/_mapping?pretty'
+
+{
+  "nginx_log" : {
+    "mappings" : {
+      "log" : {
+        "properties" : {
+          "agent" : {
+            "type" : "text",
+            "fields" : {
+              "keyword" : {
+                "type" : "keyword",
+                "ignore_above" : 256
+              }
+            }
+          },
+          "bytes" : {
+            "type" : "long"
+          },
+          "referrer" : {
+            "type" : "text",
+            "fields" : {
+              "keyword" : {
+                "type" : "keyword",
+                "ignore_above" : 256
+              }
+            }
+          },
+          "remote_ip" : {
+            "type" : "ip"
+          },
+          "remote_user" : {
+            "type" : "text",
+            "fields" : {
+              "keyword" : {
+                "type" : "keyword",
+                "ignore_above" : 256
+              }
+            }
+          },
+          "request" : {
+            "type" : "text",
+            "fields" : {
+              "keyword" : {
+                "type" : "keyword",
+                "ignore_above" : 256
+              }
+            }
+          },
+          "response" : {
+            "type" : "long"
+          },
+          "time" : {
+            "type" : "date",
+            "format" : "yyyy-MM-dd HH:mm:ss||yyyy-MM-dd||epoch_millis||dd/MMM/yyyy:HH:mm:ss Z"
+          }
+        }
+      }
+    }
+  }
+}
+</code></pre></div></div>
+
+<h3 id="批量插入数据">批量插入数据</h3>
+
+<p>一般情况下，我们需要使用 Logstash 配置将数据转发到 Elasticsearch。</p>
+
+<p>在测试情况下，手动插入数据可以考虑使用 <a href="https://github.com/elastic/stream2es">stream2es</a> ( ES 5.x 及以上版本不再兼容)</p>
+
+<p>使用 <code class="language-plaintext highlighter-rouge">curl -O download.elasticsearch.org/stream2es/stream2es; chmod +x stream2es</code> 下载安装 stream2es。(注意，使用 stream2es 需要 java 8，如果是 os x 系统可以使用 <code class="language-plaintext highlighter-rouge">brew cask uninstall java;brew tap caskroom/versions;brew cask install java8</code> 来降级 java8。)</p>
+
+<p>把上文提到的 <a href="https://raw.githubusercontent.com/elastic/examples/master/Common%20Data%20Formats/nginx_json_logs/nginx_json_logs">nginx json log</a> 保存到当前目录，
+然后使用下面的命令将数据批量插入到 ES。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cat nginx_json_logs |./stream2es stdin --target "http://elastic:changeme@127.0.0.1:9200/nginx_log/log"
+</code></pre></div></div>
+
+<p>在我们使用的 ES 5.6 版本中，则需要使用脚本 <a href="https://github.com/Mithrilwoodrat/seven-weapons-of-data-analysis/blob/master/elasticsearch/put_data.py">put_data.py</a> 来批量插入数据。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>python put_data.py nginx_json_logs nginx_log log
+</code></pre></div></div>
+
+<h3 id="浏览数据">浏览数据</h3>
+
+<p>在安装好 ElasticSearch 后，可以在浏览器中安装 <a href="https://chrome.google.com/webstore/detail/elasticsearch-head/ffmkiejjmecolpfloofpjologoblkegm">ElasticSearch Head 插件</a> 进行数据浏览和聚合查询。</p>
+
+<p>手动浏览的话，使用 curl，调用 <code class="language-plaintext highlighter-rouge">/&lt;index&gt;/&lt;doc_type&gt;/_search</code> API ，即可浏览数据，其中 <code class="language-plaintext highlighter-rouge">size</code> 参数指定返回的数量， <code class="language-plaintext highlighter-rouge">pretty</code> 指定返回格式化后的 json。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>curl -uelastic:changeme -XGET '127.0.0.1:9200/nginx_log/log/_search?size=1&amp;pretty'
+
+{
+  "took" : 5,
+  "timed_out" : false,
+  "_shards" : {
+    "total" : 5,
+    "successful" : 5,
+    "skipped" : 0,
+    "failed" : 0
+  },
+  "hits" : {
+    "total" : 51462,
+    "max_score" : 1.0,
+    "hits" : [
+      {
+        "_index" : "nginx_log",
+        "_type" : "log",
+        "_id" : "AWex4XZenurO8iSHM2Ep",
+        "_score" : 1.0,
+        "_source" : {
+          "remote_user" : "-",
+          "referrer" : "-",
+          "request" : "GET /downloads/product_1 HTTP/1.1",
+          "bytes" : 0,
+          "agent" : "Debian APT-HTTP/1.3 (0.8.16~exp12ubuntu10.21)",
+          "time" : "17/May/2015:08:05:32 +0000",
+          "response" : 304,
+          "remote_ip" : "93.180.71.3"
+        }
+      }
+    ]
+  }
+}
+</code></pre></div></div>
+
+<p>返回的 json 中， “hits” “total” 代表了命中的数据总数，因为我们没有使用任何的查询条件，所以这个 total 为实际 index 的 document 数量。</p>
+
+<p>可以 wc 一下原始文件，查看数据量是否一致。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>wc -l nginx_json_logs
+   51462 nginx_json_logs
+</code></pre></div></div>
+
+<h3 id="基本搜索">基本搜索</h3>
+
+<p>简单的搜索可以使用 <a href="https://www.elastic.co/guide/en/elasticsearch/reference/5.6/search-uri-request.html">URL Search</a>，即在 URL 中加上 <code class="language-plaintext highlighter-rouge">q=&lt;key&gt;:&lt;content&gt;</code> 的参数。</p>
+
+<p>例如，搜索 response 为 404 的 log。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>curl -uelastic:changeme -XGET 'http://127.0.0.1:9200/nginx_log/log/_search?size=1&amp;q=response:404&amp;pretty'
+
+{
+  "took" : 5,
+  "timed_out" : false,
+  "_shards" : {
+    "total" : 5,
+    "successful" : 5,
+    "skipped" : 0,
+    "failed" : 0
+  },
+  "hits" : {
+    "total" : 33876,
+    "max_score" : 0.42090252,
+    "hits" : [
+      {
+        "_index" : "nginx_log",
+        "_type" : "log",
+        "_id" : "AWfBQgs5eUMzQGhJMjhs",
+        "_score" : 0.42090252,
+        "_source" : {
+          "remote_user" : "-",
+          "referrer" : "-",
+          "request" : "GET /downloads/product_1 HTTP/1.1",
+          "bytes" : 331,
+          "agent" : "Debian APT-HTTP/1.3 (0.9.7.9)",
+          "time" : "17/May/2015:08:05:56 +0000",
+          "response" : 404,
+          "remote_ip" : "173.203.139.108"
+        }
+      }
+    ]
+  }
+}
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">q=</code> 实际上等于在使用 <a href="https://www.elastic.co/guide/en/elasticsearch/reference/5.6/query-dsl-query-string-query.html">query_string 查询</a>，具体支持的表达式格式参考文档。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>curl -uelastic:changeme -XGET '127.0.0.1:9200/nginx_log/log/_search?size=1&amp;pretty' -d '{"query":{"bool":{"must":[{"term":{"response":200}}],"must_not":[],"should":[]}},"from":0,"size":10,"sort":[],"aggs":{}}'
+
+{
+  "took" : 8,
+  "timed_out" : false,
+  "_shards" : {
+    "total" : 5,
+    "successful" : 5,
+    "skipped" : 0,
+    "failed" : 0
+  },
+  "hits" : {
+    "total" : 4028,
+    "max_score" : 1.0,
+    "hits" : [
+      {
+        "_index" : "nginx_log",
+        "_type" : "log",
+        "_id" : "AWfBQgs5eUMzQGhJMjgy",
+        "_score" : 1.0,
+        "_source" : {
+          "remote_user" : "-",
+          "referrer" : "-",
+          "request" : "GET /downloads/product_1 HTTP/1.1",
+          "bytes" : 490,
+          "agent" : "Debian APT-HTTP/1.3 (0.8.10.3)",
+          "time" : "17/May/2015:08:05:34 +0000",
+          "response" : 200,
+          "remote_ip" : "217.168.17.5"
+        }
+      }
+    ]
+  }
+}
+</code></pre></div></div>
+
+  </article>
+
+</div>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function () {
+        var s = document.createElement('script'); s.async = true;
+        s.type = 'text/javascript';
+        s.src = '//' + disqus_shortname + '.disqus.com/count.js';
+        (document.getElementsByTagName('HEAD')[0] || document.getElementsByTagName('BODY')[0]).appendChild(s);
+    }());
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/raphael/2.1.0/raphael-min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+<script src="https://flowchart.js.org/flowchart-latest.js"></script>
+<script src="/js/highlight.min.js"></script>
+<script src="/js/toc.js"></script>
+<script src="/js/qrcode.min.js"></script>
+<script>
+if (!String.prototype.format) {
+    String.prototype.format = function() {
+        var args = arguments;
+        return this.replace(/{(\d+)}/g, function(match, number) { 
+            return typeof args[number] != 'undefined'
+                ? args[number]
+                : match
+            ;
+        });
+    };
+}
+
+$('pre code').each(function(i, block) {
+    hljs.highlightBlock(block);
+});
+
+$('.language-flow').each(function(i, block) {
+    console.log(block);
+    code = $(this).text();
+    diagram = flowchart.parse(code);
+    canvas_id = 'flow'+ i;
+    console.log(canvas_id);
+    temp = "<div id='{0}'> </div>".format(canvas_id);
+    console.log(temp);
+    $(this).html(temp);
+    diagram.drawSVG(canvas_id, {
+        'x': 0,
+        'y': 0,
+        'line-width': 3,
+        'line-length': 50,
+        'text-margin': 10,
+        'font-size': 14,
+    });	
+});
+
+$('#toc').toc({
+    noBackToTopLinks: true,
+    listType: 'ul',
+    title: 'TOC',
+});
+
+var url = location.href;
+console.log(url);
+var qrcode = new QRCode("qrcode", {
+    text: url,
+    width: 128,
+    height: 128,
+    colorDark : "#000000",
+    colorLight : "#ffffff",
+    correctLevel : QRCode.CorrectLevel.H
+});
+
+$(document).ready(function () {
+    $('#show_qrcode').on('mouseenter', function () {
+        $('#qrcode').show();
+        $(this).css({
+            "text-decoration": "underline"
+        });
+    }).on('mouseleave', function () {
+        $('#qrcode').hide();
+        $(this).css({
+            "text-decoration": ''
+        });
+    });;
+});
+</script>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col  footer-col-1">
+        <ul class="contact-list">
+	  <li>
+          <li><a href="mailto:mithrilwoodrat@gmail.com">mithrilwoodrat@gmail.com</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col  footer-col-2">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/Mithrilwoodrat">
+              <span class="icon  icon--github">
+                <svg viewBox="0 0 16 16">
+                  <path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/>
+                </svg>
+              </span>
+              <span class="username">Mithrilwoodrat</span> 
+            </a>
+          </li>
+          
+        </ul>
+      </div>
+  </div>
+</footer>
+
+<script>
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-66599686-1', 'auto');
+  ga('send', 'pageview');
+
+</script>
+</body>
+</html>

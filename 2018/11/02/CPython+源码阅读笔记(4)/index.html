@@ -1,0 +1,1149 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>
+    CPython 源码阅读笔记(4)
+    </title>
+  <link type="application/atom+xml" rel="alternate" href="/feed.xml" title="虚实" />
+  
+  <style>
+  table{
+    border-left:1px solid #000000;border-top:1px solid #000000;
+    width: 100%;
+    word-wrap:break-word; word-break:break-all;
+  }
+  table th{
+  text-align:center;
+  }
+  table th,td{
+    border-right:1px solid #000000;border-bottom:1px solid #000000;
+  }
+  </style>
+
+  <meta name="description" content="之前看了 a-python-interpreter-written-in-python 和 byterun，就想试试用 JAVA 解析  Python 生成的 pyc 文件，读取 bytecode 后在 JAVA 中实现解释执行。">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/toc.css">
+  <link rel="canonical" href="/2018/11/02/CPython+%e6%ba%90%e7%a0%81%e9%98%85%e8%af%bb%e7%ac%94%e8%ae%b0(4)/">
+  <link rel="alternate" type="application/rss+xml" title="虚实" href="/feed.xml" />
+  <link rel="stylesheet" href="/css/highlight.min.css">
+  <link href="//cdn.staticfile.org/font-awesome/3.2.1/css/font-awesome.min.css" rel="stylesheet"media="all">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+    <div>
+      <a class="site-title" href="/">虚实</a>
+      <div class="site-pages">
+		<a class="site-page" href="/archive/">归档</a>
+		<a class="site-page" href="/categories/">分类</a>
+		<a class="site-page" href="/about/">关于</a>
+		<a class="site-page" href="/friend-links/">友情链接</a>
+        <a class="site-page" href="/recommends/">推荐</a>
+      </div>
+      <p class="site-sub-title">记录下折腾和学习的过程</p>
+    </div>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <div class="post">
+
+  <header class="post-header">
+    <h1 class="post-title">CPython 源码阅读笔记(4)</h1>
+    <p class="post-meta">Nov 2, 2018 • admin</p>
+
+	<p class="post-meta"> categories :   <a href="/categories/#python"> python </a>  </p>
+    <div id="show_qrcode">
+        <a>扫描二维码</a>
+        <div id="qrcode" style="display:none;position:absolute;z-index:1"></div>
+    </div>
+  </header>
+  <div class="nav">
+      <div id="toc" class="toc"></div>
+  </div>
+  <article class="post-content">
+    <p>之前看了 <a href="http://www.aosabook.org/en/500L/a-python-interpreter-written-in-python.html">a-python-interpreter-written-in-python</a> 和
+ <a href="https://speakerdeck.com/pycon2015/allison-kaptur-bytes-in-the-machine-inside-the-cpython-interpreter">byterun</a>，就想试试用 JAVA 解析 
+ Python 生成的 pyc 文件，读取 bytecode 后在 JAVA 中实现解释执行。</p>
+
+<p>要解析 pyc 文件，就需要知道其来龙去脉，以及是如何生成的。</p>
+
+<h2 id="pyc">pyc</h2>
+
+<p>根据平时编写 Python 代码的经验，pyc 文件是在我们 import 一个模块后生成的。</p>
+
+<h3 id="imp-module">imp module</h3>
+
+<p>而官方文档中提到了 <a href="https://docs.python.org/2/library/imp.html">imp</a> 模块是用来和 import 语句的具体实现机制交互的。其中：</p>
+
+<ul>
+  <li>find_module 函数负责到 sys.path 中寻找对应的 module</li>
+  <li>若存在需要的 module，则调用 load_module 加载对应 module</li>
+</ul>
+
+<p>根据之前分析 CPython 源码的经验， 标准库模块中和运行逻辑相关的函数一般对应着一个 CPython 解释器中的 C 代码实现。</p>
+
+<h3 id="importc">import.c</h3>
+<p>如 load_module 就位于 https://github.com/python/cpython/blob/2.7/Python/import.c#L1929</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>/* Load an external module using the default search path and return
+   its module object WITH INCREMENTED REFERENCE COUNT */
+
+static PyObject *
+load_module(char *name, FILE *fp, char *pathname, int type, PyObject *loader)
+{
+    PyObject *modules;
+    PyObject *m;
+    int err;
+
+    /* First check that there's an open file (if we need one)  */
+    switch (type) {
+    case PY_SOURCE:
+    case PY_COMPILED:
+        if (fp == NULL) {
+            PyErr_Format(PyExc_ValueError,
+               "file object required for import (type code %d)",
+                         type);
+            return NULL;
+        }
+    }
+
+    switch (type) {
+
+    case PY_SOURCE:
+        m = load_source_module(name, pathname, fp);
+        break;
+
+    case PY_COMPILED:
+        m = load_compiled_module(name, pathname, fp);
+        break;
+
+#ifdef HAVE_DYNAMIC_LOADING
+    case C_EXTENSION:
+        m = _PyImport_LoadDynamicModule(name, pathname, fp);
+        break;
+#endif
+
+    case PKG_DIRECTORY:
+        m = load_package(name, pathname);
+        break;
+
+    case C_BUILTIN:
+    case PY_FROZEN:
+        if (pathname != NULL &amp;&amp; pathname[0] != '\0')
+            name = pathname;
+        if (type == C_BUILTIN)
+            err = init_builtin(name);
+        else
+            err = PyImport_ImportFrozenModule(name);
+        if (err &lt; 0)
+            return NULL;
+        if (err == 0) {
+            PyErr_Format(PyExc_ImportError,
+                         "Purported %s module %.200s not found",
+                         type == C_BUILTIN ?
+                                    "builtin" : "frozen",
+                         name);
+            return NULL;
+        }
+        modules = PyImport_GetModuleDict();
+        m = PyDict_GetItemString(modules, name);
+        if (m == NULL) {
+            PyErr_Format(
+                PyExc_ImportError,
+                "%s module %.200s not properly initialized",
+                type == C_BUILTIN ?
+                    "builtin" : "frozen",
+                name);
+            return NULL;
+        }
+        Py_INCREF(m);
+        break;
+
+    case IMP_HOOK: {
+        if (loader == NULL) {
+            PyErr_SetString(PyExc_ImportError,
+                            "import hook without loader");
+            return NULL;
+        }
+        m = PyObject_CallMethod(loader, "load_module", "s", name);
+        break;
+    }
+
+    default:
+        PyErr_Format(PyExc_ImportError,
+                     "Don't know how to import %.200s (type code %d)",
+                      name, type);
+        m = NULL;
+
+    }
+
+    return m;
+}
+</code></pre></div></div>
+
+<p>可以看到 load_module 会检查找到的 module 是<code class="language-plaintext highlighter-rouge">PY_SOURCE</code>还是 <code class="language-plaintext highlighter-rouge">PY_COMPILED</code>，而这两个宏分别对应着 <code class="language-plaintext highlighter-rouge">.py</code> 和 <code class="language-plaintext highlighter-rouge">.pyc</code> 文件。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>#ifdef RISCOS
+static const struct filedescr _PyImport_StandardFiletab[] = {
+    {"/py", "U", PY_SOURCE},
+    {"/pyc", "rb", PY_COMPILED},
+    {0, 0}
+};
+#else
+static const struct filedescr _PyImport_StandardFiletab[] = {
+    {".py", "U", PY_SOURCE},
+#ifdef MS_WINDOWS
+    {".pyw", "U", PY_SOURCE},
+#endif
+    {".pyc", "rb", PY_COMPILED},
+    {0, 0}
+};
+#endif
+</code></pre></div></div>
+
+<p>我们跟入在没有 <code class="language-plaintext highlighter-rouge">.pyc</code> 文件时加载 <code class="language-plaintext highlighter-rouge">.py</code> 源文件的 <code class="language-plaintext highlighter-rouge">load_source_module</code> 函数（只摘录了一部分）。</p>
+
+<p>https://github.com/python/cpython/blob/2.7/Python/import.c#L1076</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>/* Load a source module from a given file and return its module
+   object WITH INCREMENTED REFERENCE COUNT.  If there's a matching
+   byte-compiled file, use that instead. */
+
+static PyObject *
+load_source_module(char *name, char *pathname, FILE *fp)
+{
+.....
+    cpathname = make_compiled_pathname(pathname, buf,
+                                       (size_t)MAXPATHLEN + 1);
+    if (cpathname != NULL &amp;&amp;
+        (fpc = check_compiled_module(pathname, mtime, cpathname))) {
+    }
+    else {
+        co = parse_source_module(pathname, fp);
+        if (co == NULL)
+            goto error_exit;
+        if (Py_VerboseFlag)
+            PySys_WriteStderr("import %s # from %s\n",
+                name, pathname);
+        if (cpathname) {
+            PyObject *ro = PySys_GetObject("dont_write_bytecode");
+            int b = (ro == NULL) ? 0 : PyObject_IsTrue(ro);
+            if (b &lt; 0)
+                goto error_exit;
+            if (!b)
+                write_compiled_module(co, cpathname, &amp;st, mtime);
+        }
+    }
+    m = PyImport_ExecCodeModuleEx(name, (PyObject *)co, pathname);
+    Py_DECREF(co);
+
+    PyMem_FREE(buf);
+    return m;
+
+error_exit:
+    Py_XDECREF(co);
+    PyMem_FREE(buf);
+    return NULL;
+}
+}
+</code></pre></div></div>
+
+<p>可以看到 <code class="language-plaintext highlighter-rouge">load_source_module</code> 同样会去找一次 <code class="language-plaintext highlighter-rouge">.pyc</code> 文件，再找不到的情况下，会先解析源文件，
+得到 codeobject 后调用 <code class="language-plaintext highlighter-rouge">write_compiled_module</code> 生成 <code class="language-plaintext highlighter-rouge">.pyc</code> 文件，再执行 import 逻辑。</p>
+
+<p><img src="/imgs/python_import.jpg" alt="" /></p>
+
+<h4 id="write_compiled_module">write_compiled_module</h4>
+<p>所以，<code class="language-plaintext highlighter-rouge">write_compiled_module</code> 函数中应该就对应着我们的 pyc 文件生成逻辑了。</p>
+
+<p>https://github.com/python/cpython/blob/2.7/Python/import.c#L951</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>static void
+write_compiled_module(PyCodeObject *co, char *cpathname, struct stat *srcstat, time_t mtime)
+{
+    FILE *fp;
+#ifdef MS_WINDOWS   /* since Windows uses different permissions  */
+    mode_t mode = srcstat-&gt;st_mode &amp; ~S_IEXEC;
+    /* Issue #6074: We ensure user write access, so we can delete it later
+     * when the source file changes. (On POSIX, this only requires write
+     * access to the directory, on Windows, we need write access to the file
+     * as well)
+     */
+    mode |= _S_IWRITE;
+#else
+    mode_t mode = srcstat-&gt;st_mode &amp; ~S_IXUSR &amp; ~S_IXGRP &amp; ~S_IXOTH;
+#endif
+
+    fp = open_exclusive(cpathname, mode);
+    if (fp == NULL) {
+        if (Py_VerboseFlag)
+            PySys_WriteStderr(
+                "# can't create %s\n", cpathname);
+        return;
+    }
+    PyMarshal_WriteLongToFile(pyc_magic, fp, Py_MARSHAL_VERSION);
+    /* First write a 0 for mtime */
+    PyMarshal_WriteLongToFile(0L, fp, Py_MARSHAL_VERSION);
+    PyMarshal_WriteObjectToFile((PyObject *)co, fp, Py_MARSHAL_VERSION);
+    if (fflush(fp) != 0 || ferror(fp)) {
+        if (Py_VerboseFlag)
+            PySys_WriteStderr("# can't write %s\n", cpathname);
+        /* Don't keep partial file */
+        fclose(fp);
+        (void) unlink(cpathname);
+        return;
+    }
+    /* Now write the true mtime (as a 32-bit field) */
+    fseek(fp, 4L, 0);
+    assert(mtime &lt;= 0xFFFFFFFF);
+    PyMarshal_WriteLongToFile((long)mtime, fp, Py_MARSHAL_VERSION);
+    fflush(fp);
+    fclose(fp);
+    if (Py_VerboseFlag)
+        PySys_WriteStderr("# wrote %s\n", cpathname);
+}
+</code></pre></div></div>
+
+<p>可以看到，<code class="language-plaintext highlighter-rouge">pyc</code> 文件的生成大致分下面几步:</p>
+<ul>
+  <li>1.创建目标 pyc 文件</li>
+  <li>2.首先调用 <code class="language-plaintext highlighter-rouge">PyMarshal_WriteLongToFile</code> 序列化 magic number 到文件中</li>
+  <li>3.然后序列化一个空的时间戳到文件中</li>
+  <li>4.<code class="language-plaintext highlighter-rouge">PyMarshal_WriteObjectToFile</code> 将 PyCodeObject 序列化到文件</li>
+  <li>5.写完 CodeObject 后，fseek 到时间戳的位置，填充真实的时间戳</li>
+</ul>
+
+<p>其中，magic number 定义于 <a href="https://github.com/python/cpython/blob/2.7/Python/import.c#L31">import.c 头部</a></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>/*
+    Python 2.7a0: 62171 (optimize list comprehensions/change LIST_APPEND)
+    Python 2.7a0: 62181 (optimize conditional branches:
+                introduce POP_JUMP_IF_FALSE and POP_JUMP_IF_TRUE)
+    Python 2.7a0  62191 (introduce SETUP_WITH)
+    Python 2.7a0  62201 (introduce BUILD_SET)
+    Python 2.7a0  62211 (introduce MAP_ADD and SET_ADD)
+.
+*/
+#define MAGIC (62211 | ((long)'\r'&lt;&lt;16) | ((long)'\n'&lt;&lt;24))
+
+/* Magic word as global; note that _PyImport_Init() can change the
+   value of this global to accommodate for alterations of how the
+   compiler works which are enabled by command line switches. */
+static long pyc_magic = MAGIC;
+</code></pre></div></div>
+
+<p>而 <code class="language-plaintext highlighter-rouge">PyMarshal_WriteLongToFile</code> 和 <code class="language-plaintext highlighter-rouge">PyMarshal_WriteObjectToFile</code> 定义于 <a href="https://github.com/python/cpython/blob/2.7/Python/marshal.c">marshal.c</a> 中。</p>
+
+<h3 id="marshalc">marshal.c</h3>
+
+<h4 id="pymarshal_writelongtofile">PyMarshal_WriteLongToFile</h4>
+
+<p>我们先来看 <code class="language-plaintext highlighter-rouge">PyMarshal_WriteLongToFile</code>
+https://github.com/python/cpython/blob/2.7/Python/marshal.c#L462</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>/* version currently has no effect for writing longs. */
+void
+PyMarshal_WriteLongToFile(long x, FILE *fp, int version)
+{
+    WFILE wf;
+    wf.fp = fp;
+    wf.str = NULL;
+    wf.ptr = NULL;
+    wf.end = NULL;
+    wf.error = WFERR_OK;
+    wf.depth = 0;
+    wf.strings = NULL;
+    wf.version = version;
+    w_long(x, &amp;wf);
+}
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">PyMarshal_WriteLongToFile</code> 创建了 WFILE，将打开的文件描述符赋值给 WFILE，并调用 w_long。</p>
+
+<p>用于表示写入的 pyc 文件的 WFILE 结构如下。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>typedef struct {
+    FILE *fp;
+    int error;  /* see WFERR_* values */
+    int depth;
+    /* If fp == NULL, the following are valid: */
+    PyObject *str;
+    char *ptr;
+    char *end;
+    PyObject *strings; /* dict on marshal, list on unmarshal */
+    int version;
+} WFILE;
+</code></pre></div></div>
+
+<p>跟入 <code class="language-plaintext highlighter-rouge">w_long</code></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>static void
+w_long(long x, WFILE *p)
+{
+    w_byte((char)( x      &amp; 0xff), p);
+    w_byte((char)((x&gt;&gt; 8) &amp; 0xff), p);
+    w_byte((char)((x&gt;&gt;16) &amp; 0xff), p);
+    w_byte((char)((x&gt;&gt;24) &amp; 0xff), p);
+}
+</code></pre></div></div>
+
+<p>可以看到 <code class="language-plaintext highlighter-rouge">w_long</code> 只是调用了四次 <code class="language-plaintext highlighter-rouge">w_byte</code> 将一个 type 为 long ，长度为4字节的数写入到文件中。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>#define w_byte(c, p) if (((p)-&gt;fp)) putc((c), (p)-&gt;fp); \
+                      else if ((p)-&gt;ptr != (p)-&gt;end) *(p)-&gt;ptr++ = (c); \
+                           else w_more(c, p)
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">w_byte</code> 宏简单的将传入的一字节内容写入到 WFILE-&gt;fp ，即对应的 pyc 文件中。<code class="language-plaintext highlighter-rouge">marshal</code> 中的序列化写入操作都是基于 <code class="language-plaintext highlighter-rouge">w_byte</code> 封装的。</p>
+
+<h4 id="pymarshal_writeobjecttofile">PyMarshal_WriteObjectToFile</h4>
+
+<p><code class="language-plaintext highlighter-rouge">PyMarshal_WriteObjectToFile</code> 相对之前的 <code class="language-plaintext highlighter-rouge">PyMarshal_WriteLongToFile</code> 更加的复杂了，用于将 Python 对象序列化到文件中。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>void
+PyMarshal_WriteObjectToFile(PyObject *x, FILE *fp, int version)
+{
+    WFILE wf;
+    wf.fp = fp;
+    wf.str = NULL;
+    wf.ptr = NULL;
+    wf.end = NULL;
+    wf.error = WFERR_OK;
+    wf.depth = 0;
+    wf.strings = (version &gt; 0) ? PyDict_New() : NULL;
+    wf.version = version;
+    w_object(x, &amp;wf);
+    Py_XDECREF(wf.strings);
+}
+</code></pre></div></div>
+
+<p>可以看到 <code class="language-plaintext highlighter-rouge">PyMarshal_WriteObjectToFile</code> 调用的是 <code class="language-plaintext highlighter-rouge">w_object</code> ，是 marshal 最复杂的一个函数。</p>
+
+<p>https://github.com/python/cpython/blob/2.7/Python/marshal.c#L212</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>static void
+w_object(PyObject *v, WFILE *p)
+{
+    Py_ssize_t i, n;
+
+    p-&gt;depth++;
+
+    if (p-&gt;depth &gt; MAX_MARSHAL_STACK_DEPTH) {
+        p-&gt;error = WFERR_NESTEDTOODEEP;
+    }
+    else if (v == NULL) {
+        w_byte(TYPE_NULL, p);
+    }
+    else if (v == Py_None) {
+        w_byte(TYPE_NONE, p);
+    }
+    else if (v == PyExc_StopIteration) {
+        w_byte(TYPE_STOPITER, p);
+    }
+    else if (v == Py_Ellipsis) {
+        w_byte(TYPE_ELLIPSIS, p);
+    }
+    else if (v == Py_False) {
+        w_byte(TYPE_FALSE, p);
+    }
+    else if (v == Py_True) {
+        w_byte(TYPE_TRUE, p);
+    }
+    else if (PyInt_CheckExact(v)) {
+        long x = PyInt_AS_LONG((PyIntObject *)v);
+        w_byte(TYPE_INT, p);
+        w_long(x, p);
+    }
+    else if (PyLong_CheckExact(v)) {
+        PyLongObject *ob = (PyLongObject *)v;
+        w_PyLong(ob, p);
+    }
+    ....
+    else if (PyCode_Check(v)) {
+        PyCodeObject *co = (PyCodeObject *)v;
+        w_byte(TYPE_CODE, p);
+        w_long(co-&gt;co_argcount, p);
+        w_long(co-&gt;co_nlocals, p);
+        w_long(co-&gt;co_stacksize, p);
+        w_long(co-&gt;co_flags, p);
+        w_object(co-&gt;co_code, p);
+        w_object(co-&gt;co_consts, p);
+        w_object(co-&gt;co_names, p);
+        w_object(co-&gt;co_varnames, p);
+        w_object(co-&gt;co_freevars, p);
+        w_object(co-&gt;co_cellvars, p);
+        w_object(co-&gt;co_filename, p);
+        w_object(co-&gt;co_name, p);
+        w_long(co-&gt;co_firstlineno, p);
+        w_object(co-&gt;co_lnotab, p);
+    }
+    else {
+        w_byte(TYPE_UNKNOWN, p);
+        p-&gt;error = WFERR_UNMARSHALLABLE;
+    }
+   exit:
+    p-&gt;depth--;
+}
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">w_object</code> 的主要逻辑为读取传入的 <code class="language-plaintext highlighter-rouge">PyObject *v</code> 的具体类型，调用 <code class="language-plaintext highlighter-rouge">w_byte</code> 写入一个字节的类型数据，然后调用不同的 <code class="language-plaintext highlighter-rouge">w_</code> 系列函数序列化对应类型的数据。</p>
+
+<p>这里我们省略其他类型的代码，重点看下 <code class="language-plaintext highlighter-rouge">PyCodeObject</code> 类型的处理。可以看到，<code class="language-plaintext highlighter-rouge">w_object</code> 只是简单的讲 <code class="language-plaintext highlighter-rouge">PyCodeObject</code> 中每个类变量依次序列化到文件中，我们只需要按照 <code class="language-plaintext highlighter-rouge">type</code> <code class="language-plaintext highlighter-rouge">object</code> 的顺序去反序列化即可得到对应的内容。</p>
+
+<p>TYPE 相关的宏定义于<a href="https://github.com/python/cpython/blob/2.7/Python/marshal.c#L27">marshal.c#L27</a></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>#define TYPE_NULL               '0'
+#define TYPE_NONE               'N'
+#define TYPE_FALSE              'F'
+#define TYPE_TRUE               'T'
+#define TYPE_STOPITER           'S'
+#define TYPE_ELLIPSIS           '.'
+#define TYPE_INT                'i'
+#define TYPE_INT64              'I'
+#define TYPE_FLOAT              'f'
+#define TYPE_BINARY_FLOAT       'g'
+#define TYPE_COMPLEX            'x'
+#define TYPE_BINARY_COMPLEX     'y'
+#define TYPE_LONG               'l'
+#define TYPE_STRING             's'
+#define TYPE_INTERNED           't'
+#define TYPE_STRINGREF          'R'
+#define TYPE_TUPLE              '('
+#define TYPE_LIST               '['
+#define TYPE_DICT               '{'
+#define TYPE_CODE               'c'
+#define TYPE_UNICODE            'u'
+#define TYPE_UNKNOWN            '?'
+#define TYPE_SET                '&lt;'
+#define TYPE_FROZENSET          '&gt;'
+</code></pre></div></div>
+
+<p>使用 JAVA 反序列化 <code class="language-plaintext highlighter-rouge">pyc</code> 文件参考 <a href="https://github.com/Mithrilwoodrat/jpyrunner/blob/master/src/main/java/org/JPycRunner/PycFile.java">PycFile.java</a> 。</p>
+
+<h3 id="pyc-文件结构struct-of-pyc">pyc 文件结构(Struct of pyc)</h3>
+
+<p>根据上面的分析，我们可以得出 pyc 文件的格式如下，其中 <code class="language-plaintext highlighter-rouge">PyCodeObject</code> 部分为变长，需要参考 <code class="language-plaintext highlighter-rouge">w_object</code> 进行反序列化。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>----------
+magic number 4 bytes
+----------
+timestamp 4 bytes
+----------
+PyCodeObject
+</code></pre></div></div>
+
+<h2 id="pycodeobject">PyCodeObject</h2>
+
+<p>根据上面的分析，我们知道了 pyc 文件中最主要的内容为序列化的 <code class="language-plaintext highlighter-rouge">PyCodeObject</code>，接下来我们就分析一下 <code class="language-plaintext highlighter-rouge">PyCodeObject</code> 的结构，以及如何生成及如何被解释执行。</p>
+
+<p><code class="language-plaintext highlighter-rouge">PyCodeObject</code> 定义于 <a href="https://github.com/python/cpython/blob/2.7/Include/code.h#L10">Include/code.h#L10</a></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>/* Bytecode object */
+typedef struct {
+    PyObject_HEAD
+    int co_argcount;		/* #arguments, except *args */
+    int co_nlocals;		/* #local variables */
+    int co_stacksize;		/* #entries needed for evaluation stack */
+    int co_flags;		/* CO_..., see below */
+    PyObject *co_code;		/* instruction opcodes */
+    PyObject *co_consts;	/* list (constants used) */
+    PyObject *co_names;		/* list of strings (names used) */
+    PyObject *co_varnames;	/* tuple of strings (local variable names) */
+    PyObject *co_freevars;	/* tuple of strings (free variable names) */
+    PyObject *co_cellvars;      /* tuple of strings (cell variable names) */
+    /* The rest doesn't count for hash/cmp */
+    PyObject *co_filename;	/* string (where it was loaded from) */
+    PyObject *co_name;		/* string (name, for reference) */
+    int co_firstlineno;		/* first source line number */
+    PyObject *co_lnotab;	/* string (encoding addr&lt;-&gt;lineno mapping) See
+				   Objects/lnotab_notes.txt for details. */
+    void *co_zombieframe;     /* for optimization only (see frameobject.c) */
+    PyObject *co_weakreflist;   /* to support weakrefs to code objects */
+} PyCodeObject;
+</code></pre></div></div>
+
+<p>上面 <code class="language-plaintext highlighter-rouge">load_source_module</code> 中可以看到 <code class="language-plaintext highlighter-rouge">pyc</code> 文件的 <code class="language-plaintext highlighter-rouge">PyCodeObject</code> 是调用 <code class="language-plaintext highlighter-rouge">parse_source_module</code> 生成的。</p>
+
+<p><a href="https://github.com/python/cpython/blob/2.7/Python/import.c#L887">parse_source_module</a></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>static PyCodeObject *
+parse_source_module(const char *pathname, FILE *fp)
+{
+    PyCodeObject *co = NULL;
+    mod_ty mod;
+    PyCompilerFlags flags;
+    PyArena *arena = PyArena_New();
+    if (arena == NULL)
+        return NULL;
+
+    flags.cf_flags = 0;
+
+    mod = PyParser_ASTFromFile(fp, pathname, Py_file_input, 0, 0, &amp;flags,
+                               NULL, arena);
+    if (mod) {
+        co = PyAST_Compile(mod, pathname, NULL, arena);
+    }
+    PyArena_Free(arena);
+    return co;
+}
+</code></pre></div></div>
+
+<p>我们在第一篇<a href="https://woodrat.xyz/2017/06/21/CPython%E6%BA%90%E7%A0%81%E9%98%85%E8%AF%BB%E7%AC%94%E8%AE%B0%281%29#%E8%AF%8D%E6%B3%95%E8%AF%AD%E6%B3%95%E5%88%86%E6%9E%90">CPython源码阅读笔记(1)</a> 中曾经分析从 <code class="language-plaintext highlighter-rouge">PyParser_ASTFromString</code> 开始的代码生成流程，这里的逻辑和之前一致。</p>
+
+<p>即在 <code class="language-plaintext highlighter-rouge">compile_mod</code> 阶段划分好了 CFG ，然后按照 CFG 遍历生成 <code class="language-plaintext highlighter-rouge">PyCodeObject</code>。其中最外层为一个入口的 Block,嵌套的生成多个 code object。</p>
+
+<p><img src="/imgs/parse_source_module.jpg" alt="" /></p>
+
+<h3 id="代码生成测试">代码生成测试</h3>
+
+<p>创建 test.py 如下</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>def test1(a, b):
+    return a+b
+
+c = test1(1,2)
+</code></pre></div></div>
+
+<p>在同级目录启动一个 Python 终端。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&gt;&gt;&gt; f = open('test.py').read()
+&gt;&gt;&gt; co = compile(f, 'test.py', 'exec')
+&gt;&gt;&gt; import dis
+&gt;&gt;&gt; dis.dis(co)
+ 1           0 LOAD_CONST               0 (&lt;code object test1 at 0x1028d15b0, file "test.py", line 1&gt;)
+              3 MAKE_FUNCTION            0
+              6 STORE_NAME               0 (test1)
+
+  4           9 LOAD_NAME                0 (test1)
+             12 LOAD_CONST               1 (1)
+             15 LOAD_CONST               2 (2)
+             18 CALL_FUNCTION            2
+             21 STORE_NAME               1 (c)
+             24 LOAD_CONST               3 (None)
+             27 RETURN_VALUE
+</code></pre></div></div>
+
+<p>可以看到 test 函数的生成了单独的一个 code object。</p>
+
+<p>查看最外层 code object 的 <code class="language-plaintext highlighter-rouge">co_const</code> 后找到了对应的 test 函数的 code object 。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&gt;&gt;&gt; co.co_consts
+(&lt;code object test1 at 0x1028d15b0, file "test.py", line 1&gt;, 1, 2, None)
+</code></pre></div></div>
+
+<p>接着我们可以根据 <code class="language-plaintext highlighter-rouge">PyCodeObject</code> 的各个属性的名字猜测并查看其内容。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&gt;&gt;&gt; co_test1 = co.co_consts[0]
+
+&gt;&gt;&gt; co_test1.co_argcount
+2
+
+&gt;&gt;&gt; co_test1.co_varname
+('a', 'b')
+
+&gt;&gt;&gt; co_test1.co_code
+'|\x00\x00|\x01\x00\x17S'
+
+&gt;&gt;&gt; dis.dis(co_test1)
+  2           0 LOAD_FAST                0 (a)
+              3 LOAD_FAST                1 (b)
+              6 BINARY_ADD
+              7 RETURN_VALUE
+</code></pre></div></div>
+
+<h3 id="调试">调试</h3>
+
+<p><img src="/imgs/compiler_mod.jpg" alt="" /></p>
+
+<p>按照第一篇文章中的方法，我们可以试着调试一下 test.py 的编译过程。</p>
+
+<h4 id="compiler_mod">compiler_mod</h4>
+
+<p>在编译的入口函数 <code class="language-plaintext highlighter-rouge">compiler_mod</code> 处下断点，运行 <code class="language-plaintext highlighter-rouge">test.py</code>。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&gt; gdb python
+(gdb) b compiler_mod
+Breakpoint 1 at 0xe4602: file Python/compile.c, line 1219.
+(gdb) r test.py
+Starting program: /mnt/e/codes/Python-2.7.10/python.exe test.py
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/lib/x86_64-linux-gnu/libthread_db.so.1".
+</code></pre></div></div>
+
+<h4 id="compiler_body">compiler_body</h4>
+
+<p>单步跟入 <code class="language-plaintext highlighter-rouge">compiler_mod</code> 函数，可以看到传入的 mod 为 <code class="language-plaintext highlighter-rouge">Module_kind</code>，所以接下来跟入
+<code class="language-plaintext highlighter-rouge">compiler_body</code>。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(gdb) s
+compiler_mod (mod=0x8695e08, c=0x7ffffffee620) at Python/compile.c:1219
+1219        if (!module) {
+(gdb) l
+1214    compiler_mod(struct compiler *c, mod_ty mod)
+1215    {
+1216        PyCodeObject *co;
+1217        int addNone = 1;
+1218        static PyObject *module;
+1219        if (!module) {
+1220            module = PyString_InternFromString("&lt;module&gt;");
+1221            if (!module)
+1222                return NULL;
+1223        }
+(gdb) p c
+$1 = (struct compiler *) 0x7ffffffee620
+(gdb) p *c
+$2 = {c_filename = 0x7ffffffeebbd "test.py", c_st = 0x863b190, c_future = 0x7fffff7c94a0, c_flags = 0x7ffffffee7dc, c_interactive = 0,
+  c_nestlevel = 0, u = 0x0, c_stack = 0x7fffff6a6f80, c_arena = 0x864e520}
+(gdb) p mod
+$3 = (mod_ty) 0x8695e08
+(gdb) p *mod
+$4 = {kind = Module_kind, v = {Module = {body = 0x8695ab0}, Interactive = {body = 0x8695ab0}, Expression = {body = 0x8695ab0}, Suite = {
+      body = 0x8695ab0}}}
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">compiler_mod</code></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>static PyCodeObject *
+compiler_mod(struct compiler *c, mod_ty mod)
+{
+    PyCodeObject *co;
+    int addNone = 1;
+    static PyObject *module;
+    if (!module) {
+        module = PyString_InternFromString("&lt;module&gt;");
+        if (!module)
+            return NULL;
+    }
+    /* Use 0 for firstlineno initially, will fixup in assemble(). */
+    if (!compiler_enter_scope(c, module, mod, 0))
+        return NULL;
+    switch (mod-&gt;kind) {
+    case Module_kind:
+        if (!compiler_body(c, mod-&gt;v.Module.body)) {
+            compiler_exit_scope(c);
+            return 0;
+        }
+        break;
+    case Interactive_kind:
+        c-&gt;c_interactive = 1;
+        VISIT_SEQ_IN_SCOPE(c, stmt,
+                                mod-&gt;v.Interactive.body);
+        break;
+    case Expression_kind:
+        VISIT_IN_SCOPE(c, expr, mod-&gt;v.Expression.body);
+        addNone = 0;
+        break;
+    case Suite_kind:
+        PyErr_SetString(PyExc_SystemError,
+                        "suite should not be possible");
+        return 0;
+    default:
+        PyErr_Format(PyExc_SystemError,
+                     "module kind %d should not be possible",
+                     mod-&gt;kind);
+        return 0;
+    }
+    co = assemble(c, addNone);
+    compiler_exit_scope(c);
+    return co;
+}
+</code></pre></div></div>
+
+<p>在 <code class="language-plaintext highlighter-rouge">compiler_body</code> 处下断点，然后跟入该函数。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(gdb) b compiler_body
+Breakpoint 2 at 0x80e392a: compiler_body. (2 locations)
+(gdb) c
+Continuing.
+
+Breakpoint 2, compiler_mod (mod=0x8695e08, c=0x7ffffffee620) at Python/compile.c:1229
+1229            if (!compiler_body(c, mod-&gt;v.Module.body)) {
+(gdb) s
+compiler_body (stmts=0x8695ab0, c=0x7ffffffee620) at Python/compile.c:1198
+1198        if (!asdl_seq_LEN(stmts))
+</code></pre></div></div>
+
+<p>可以看到，<code class="language-plaintext highlighter-rouge">compiler_body</code> 只是简单的讲 stmts 中的元素取出，通过 <code class="language-plaintext highlighter-rouge">VISIT</code> 宏进行代码生成。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>static int
+compiler_body(struct compiler *c, asdl_seq *stmts)
+{
+    int i = 0;
+    stmt_ty st;
+
+    if (!asdl_seq_LEN(stmts))
+        return 1;
+    st = (stmt_ty)asdl_seq_GET(stmts, 0);
+    if (compiler_isdocstring(st) &amp;&amp; Py_OptimizeFlag &lt; 2) {
+        /* don't generate docstrings if -OO */
+        i = 1;
+        VISIT(c, expr, st-&gt;v.Expr.value);
+        if (!compiler_nameop(c, __doc__, Store))
+            return 0;
+    }
+    for (; i &lt; asdl_seq_LEN(stmts); i++)
+        VISIT(c, stmt, (stmt_ty)asdl_seq_GET(stmts, i));
+    return 1;
+}
+</code></pre></div></div>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>#define VISIT(C, TYPE, V) {\
+    if (!compiler_visit_ ## TYPE((C), (V))) \
+        return 0; \
+}
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">VISIT(c, stmt, (stmt_ty)asdl_seq_GET(stmts, i));</code> 展开其实就是<code class="language-plaintext highlighter-rouge">compiler_visit_stmt(c, (stmt_ty)asdl_seq_GET(stmts, i))</code>。</p>
+
+<p>单步跟入循环中的 VISIT 调用，查看传入的 stmt 参数，为 <code class="language-plaintext highlighter-rouge">include/Python-ast.h</code> 中定义的 <code class="language-plaintext highlighter-rouge">struct _stmt</code>，即 stmt AST Node（stmt 的语法树节点）。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(gdb) s
+compiler_visit_stmt (c=0x7ffffffee620, s=0x8695c58) at Python/compile.c:2117
+2117        c-&gt;u-&gt;u_lineno = s-&gt;lineno;
+(gdb) p *s
+$19 = {kind = FunctionDef_kind, v = {FunctionDef = {name = 0x7fffff67a480, args = 0x8695b50, body = 0x8695b70, decorator_list = 0x0},
+   ....
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">Python-ast.h</code> 中定义了 Python 中 stmt 的类型。
+https://github.com/python/cpython/blob/2.7/Include/Python-ast.h#L62</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>enum _stmt_kind {FunctionDef_kind=1, ClassDef_kind=2, Return_kind=3,
+                  Delete_kind=4, Assign_kind=5, AugAssign_kind=6, Print_kind=7,
+                  For_kind=8, While_kind=9, If_kind=10, With_kind=11,
+                  Raise_kind=12, TryExcept_kind=13, TryFinally_kind=14,
+                  Assert_kind=15, Import_kind=16, ImportFrom_kind=17,
+                  Exec_kind=18, Global_kind=19, Expr_kind=20, Pass_kind=21,
+                  Break_kind=22, Continue_kind=23};
+</code></pre></div></div>
+
+<h4 id="compiler_visit_stmt">compiler_visit_stmt</h4>
+
+<p>https://github.com/python/cpython/blob/2.7/Python/compile.c#L2074</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>static int
+compiler_visit_stmt(struct compiler *c, stmt_ty s)
+{
+    int i, n;
+
+    /* Always assign a lineno to the next instruction for a stmt. */
+    c-&gt;u-&gt;u_lineno = s-&gt;lineno;
+    c-&gt;u-&gt;u_lineno_set = false;
+
+    switch (s-&gt;kind) {
+    case FunctionDef_kind:
+        return compiler_function(c, s);
+    ...
+    }
+    return 1;
+}
+</code></pre></div></div>
+
+<p>因为这里第一次传入的 stmt 的类型为 <code class="language-plaintext highlighter-rouge">FunctionDef_kind</code>，这里会调用 <code class="language-plaintext highlighter-rouge">compiler_function</code>。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(gdb) n
+2120        switch (s-&gt;kind) {
+(gdb) n
+2122            return compiler_function(c, s);
+</code></pre></div></div>
+
+<h4 id="compiler_function">compiler_function</h4>
+
+<p>跟入 <code class="language-plaintext highlighter-rouge">compiler_function</code>, 这里即是真正的代码生成逻辑。</p>
+
+<p>https://github.com/python/cpython/blob/2.7/Python/compile.c#L1351</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>static int
+compiler_function(struct compiler *c, stmt_ty s)
+{
+    PyCodeObject *co;
+    PyObject *first_const = Py_None;
+    arguments_ty args = s-&gt;v.FunctionDef.args;
+    asdl_seq* decos = s-&gt;v.FunctionDef.decorator_list;
+    stmt_ty st;
+    int i, n, docstring;
+
+    assert(s-&gt;kind == FunctionDef_kind);
+
+    if (!compiler_decorators(c, decos))
+        return 0;
+    if (args-&gt;defaults)
+        VISIT_SEQ(c, expr, args-&gt;defaults);
+    if (!compiler_enter_scope(c, s-&gt;v.FunctionDef.name, (void *)s,
+                              s-&gt;lineno))
+        return 0;
+
+    st = (stmt_ty)asdl_seq_GET(s-&gt;v.FunctionDef.body, 0);
+
+    /* unpack nested arguments */
+    compiler_arguments(c, args);
+
+    c-&gt;u-&gt;u_argcount = asdl_seq_LEN(args-&gt;args);
+    n = asdl_seq_LEN(s-&gt;v.FunctionDef.body);
+    ....
+    co = assemble(c, 1);
+    compiler_exit_scope(c);
+    if (co == NULL)
+        return 0;
+
+    compiler_make_closure(c, co, asdl_seq_LEN(args-&gt;defaults));
+    Py_DECREF(co);
+
+    for (i = 0; i &lt; asdl_seq_LEN(decos); i++) {
+        ADDOP_I(c, CALL_FUNCTION, 1);
+    }
+
+    return compiler_nameop(c, s-&gt;v.FunctionDef.name, Store);
+}
+</code></pre></div></div>
+
+<p>这里逻辑比较复杂，就不贴调试的过程了。大致的流程为</p>
+
+<ul>
+  <li>将 FuncDef AST Node 中的一些 metadata 存储到 compiler 对象中。</li>
+  <li>调用 assemble 将函数体生成单独的 code object。</li>
+  <li>调用 <code class="language-plaintext highlighter-rouge">compiler_make_closure</code> 生成 <code class="language-plaintext highlighter-rouge">LOAD_CONST</code> 和 <code class="language-plaintext highlighter-rouge">MAKE_FUNCTION</code> 两个opcode。</li>
+</ul>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>static int
+compiler_make_closure(struct compiler *c, PyCodeObject *co, int args)
+{
+    int i, free = PyCode_GetNumFree(co);
+    if (free == 0) {
+        ADDOP_O(c, LOAD_CONST, (PyObject*)co, consts);
+        ADDOP_I(c, MAKE_FUNCTION, args);
+        return 1;
+    }
+    ...
+}
+</code></pre></div></div>
+
+<ul>
+  <li>调用 <code class="language-plaintext highlighter-rouge">compiler_nameop</code> 生成 <code class="language-plaintext highlighter-rouge">STORE_NAME</code> opcode。</li>
+</ul>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code> static int
+compiler_nameop(struct compiler *c, identifier name, expr_context_ty ctx)
+{
+    int op, scope, arg;
+    enum { OP_FAST, OP_GLOBAL, OP_DEREF, OP_NAME } optype;
+    ....
+    op = 0;
+    optype = OP_NAME;
+    ....
+    switch (optype) {
+     case OP_NAME:
+        switch (ctx) {
+        case Load: op = LOAD_NAME; break;
+        case Store: op = STORE_NAME; break;
+        case Del: op = DELETE_NAME; break;
+        case AugLoad:
+        case AugStore:
+            break;
+        case Param:
+        default:
+            PyErr_SetString(PyExc_SystemError,
+                            "param invalid for name variable");
+            return 0;
+        }
+        break;
+    }
+
+    assert(op);
+    arg = compiler_add_o(c, dict, mangled);
+    Py_DECREF(mangled);
+    if (arg &lt; 0)
+        return 0;
+    return compiler_addop_i(c, op, arg);
+}
+</code></pre></div></div>
+
+<p>至此生成了下面的字节码</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>LOAD_CONST               0 
+MAKE_FUNCTION            0
+STORE_NAME               0
+</code></pre></div></div>
+
+<p>对应源码中的</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>def test1(a, b):
+    return a+b
+</code></pre></div></div>
+
+<h2 id="py_opcode">Py_OPCODE</h2>
+
+<p>字节码对应的数字定于于 <a href="https://github.com/python/cpython/blob/2.7/Include/opcode.h">opcode.h</a> 。</p>
+
+<p>其中 <code class="language-plaintext highlighter-rouge">HAS_ARG</code> 宏定义了字节码是否带有参数（通过判断字节码对应的数字是否大于指定的值）。</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>#define HAS_ARG(op) ((op) &gt;= HAVE_ARGUMENT)
+</code></pre></div></div>
+
+<p>在 Python2.7 中这个值为 90</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>#define HAVE_ARGUMENT	90	/* Opcodes from here have an argument: */
+</code></pre></div></div>
+
+  </article>
+
+</div>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function () {
+        var s = document.createElement('script'); s.async = true;
+        s.type = 'text/javascript';
+        s.src = '//' + disqus_shortname + '.disqus.com/count.js';
+        (document.getElementsByTagName('HEAD')[0] || document.getElementsByTagName('BODY')[0]).appendChild(s);
+    }());
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/raphael/2.1.0/raphael-min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+<script src="https://flowchart.js.org/flowchart-latest.js"></script>
+<script src="/js/highlight.min.js"></script>
+<script src="/js/toc.js"></script>
+<script src="/js/qrcode.min.js"></script>
+<script>
+if (!String.prototype.format) {
+    String.prototype.format = function() {
+        var args = arguments;
+        return this.replace(/{(\d+)}/g, function(match, number) { 
+            return typeof args[number] != 'undefined'
+                ? args[number]
+                : match
+            ;
+        });
+    };
+}
+
+$('pre code').each(function(i, block) {
+    hljs.highlightBlock(block);
+});
+
+$('.language-flow').each(function(i, block) {
+    console.log(block);
+    code = $(this).text();
+    diagram = flowchart.parse(code);
+    canvas_id = 'flow'+ i;
+    console.log(canvas_id);
+    temp = "<div id='{0}'> </div>".format(canvas_id);
+    console.log(temp);
+    $(this).html(temp);
+    diagram.drawSVG(canvas_id, {
+        'x': 0,
+        'y': 0,
+        'line-width': 3,
+        'line-length': 50,
+        'text-margin': 10,
+        'font-size': 14,
+    });	
+});
+
+$('#toc').toc({
+    noBackToTopLinks: true,
+    listType: 'ul',
+    title: 'TOC',
+});
+
+var url = location.href;
+console.log(url);
+var qrcode = new QRCode("qrcode", {
+    text: url,
+    width: 128,
+    height: 128,
+    colorDark : "#000000",
+    colorLight : "#ffffff",
+    correctLevel : QRCode.CorrectLevel.H
+});
+
+$(document).ready(function () {
+    $('#show_qrcode').on('mouseenter', function () {
+        $('#qrcode').show();
+        $(this).css({
+            "text-decoration": "underline"
+        });
+    }).on('mouseleave', function () {
+        $('#qrcode').hide();
+        $(this).css({
+            "text-decoration": ''
+        });
+    });;
+});
+</script>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col  footer-col-1">
+        <ul class="contact-list">
+	  <li>
+          <li><a href="mailto:mithrilwoodrat@gmail.com">mithrilwoodrat@gmail.com</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col  footer-col-2">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/Mithrilwoodrat">
+              <span class="icon  icon--github">
+                <svg viewBox="0 0 16 16">
+                  <path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/>
+                </svg>
+              </span>
+              <span class="username">Mithrilwoodrat</span> 
+            </a>
+          </li>
+          
+        </ul>
+      </div>
+  </div>
+</footer>
+
+<script>
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-66599686-1', 'auto');
+  ga('send', 'pageview');
+
+</script>
+</body>
+</html>
