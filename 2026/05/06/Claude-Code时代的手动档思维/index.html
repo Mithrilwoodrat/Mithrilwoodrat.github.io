@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>
+    Claude Code时代的手动挡思维
+    </title>
+  <link type="application/atom+xml" rel="alternate" href="/feed.xml" title="虚实" />
+  
+  <style>
+  table{
+    border-left:1px solid #000000;border-top:1px solid #000000;
+    width: 100%;
+    word-wrap:break-word; word-break:break-all;
+  }
+  table th{
+  text-align:center;
+  }
+  table th,td{
+    border-right:1px solid #000000;border-bottom:1px solid #000000;
+  }
+  </style>
+
+  <meta name="description" content="卖掉BRZ那天，是个晴天。">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/toc.css">
+  <link rel="canonical" href="/2026/05/06/Claude-Code%E6%97%B6%E4%BB%A3%E7%9A%84%E6%89%8B%E5%8A%A8%E6%A1%A3%E6%80%9D%E7%BB%B4/">
+  <link rel="alternate" type="application/rss+xml" title="虚实" href="/feed.xml" />
+  <link rel="stylesheet" href="/css/highlight.min.css">
+  <link href="//cdn.staticfile.org/font-awesome/3.2.1/css/font-awesome.min.css" rel="stylesheet"media="all">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+    <div>
+      <a class="site-title" href="/">虚实</a>
+      <div class="site-pages">
+		<a class="site-page" href="/archive/">归档</a>
+		<a class="site-page" href="/categories/">分类</a>
+		<a class="site-page" href="/about/">关于</a>
+		<a class="site-page" href="/friend-links/">友情链接</a>
+        <a class="site-page" href="/recommends/">推荐</a>
+      </div>
+      <p class="site-sub-title">记录下折腾和学习的过程</p>
+    </div>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <div class="post">
+
+  <header class="post-header">
+    <h1 class="post-title">Claude Code时代的手动挡思维</h1>
+    <p class="post-meta">May 6, 2026 • admin</p>
+
+	<p class="post-meta"> categories :   <a href="/categories/#杂谈"> 杂谈 </a>  </p>
+    <div id="show_qrcode">
+        <a>扫描二维码</a>
+        <div id="qrcode" style="display:none;position:absolute;z-index:1"></div>
+    </div>
+  </header>
+  <div class="nav">
+      <div id="toc" class="toc"></div>
+  </div>
+  <article class="post-content">
+    <p>卖掉BRZ那天，是个晴天。</p>
+
+<p>下午三点的光打在蓝色车身上，金色轮毂折射出一圈碎光。绿头CD机放着《Tokyo Drift》——我从大学听到现在的碟，虽然从未学会漂移。交钥匙前发动了最后一次，FA20从低吟拉到高转。买家小我六岁，跳上车那一刻笑得像个孩子。</p>
+
+<p>理想L7什么都会——自动泊车、NOA导航、语音控制。BRZ什么都不会——转速得自己听、补油得自己踩、跟趾得自己练。每个动作都是你和车在对话。</p>
+
+<p>交钥匙那一刻我想起《禅与摩托车维修艺术》。Pirsig说，技术不是问题，问题是你和技术的关系。BRZ是古典理解——拆得开、听得懂、摸得着。L7是纯浪漫——舒服、聪明，但你不知道它内部在做什么。</p>
+
+<p>不是卖一辆车。是古典向浪漫的投降。</p>
+
+<hr />
+
+<p>但卖车归卖车。写代码这件事，我没有完全交给自动驾驶。</p>
+
+<p>我现在只用Claude Code，IDE早卸了。但我跟新手用AI是两回事。新手是 spec acceptance——”帮我写一个登录系统”，丢需求，收代码，跑通了就过了。我是 spec coding——先理解业务、拆PRD、画时序图、写技术方案，然后再把方案丢给AI执行。</p>
+
+<p>区别在哪？我写的不是 prompt，是 design doc。AI 在我手里不是代驾，是帮踩油门的——方向盘还在我手上。</p>
+
+<p>效果很直观：交付速度翻了几倍，但质量没有下降。因为质量从来不是代码写得快决定的，是架构、边界条件、异常路径——这些东西 AI 猜不出来，只有你看过足够多的血能预判。</p>
+
+<p>这就是Pirsig说的古典理解——你知道它为什么能跑，也知道它会在哪里炸。AI让你很快，但只有古典理解让你正确。</p>
+
+<hr />
+
+<p>深夜刷番茄小说，一本西溪旧月的《末世从AI觉醒开始崛起！》——写到320章还在连载，讲AI研发工程师重生后灵魂与AI融合，跑到修炼文明里搞元宇宙。推荐栏还有《AI取代程序员》《GPT之后，代码不再需要人类》《我被Copilot开除了》。</p>
+
+<p>两层黑色幽默：这些大概率是AI生成的网文，在说AI会干掉程序员；而另一群程序员正用AI写网文收割稿费。套娃。</p>
+
+<p>Pirsig警告过”鬼魂”：技术太聪明，你就看不见它背后的形式。当你只会prompt不会debug，只看得懂diff看不懂调用栈，你就从驾驶员变成了乘客。车还是能到目的地，但撞护栏的时候你不知道该打多少方向。</p>
+
+<p>这不是危言耸听。会用Claude Code的人已经很多了，真正懂它生成什么的人少得可怜。</p>
+
+<hr />
+
+<p>两种方式，我都有体会。</p>
+
+<p>开BRZ上龙泉山狮子堡：全程盘山路，右手挡杆和方向盘之间来回，左脚跟趾补油，耳朵追着FA20从两千转到七千转的声线变化。每个回头弯都在和物理定律谈判。到山顶手心全是汗，但你知道是自己开上来的。</p>
+
+<p>Pirsig在书里有一段写摩旅时的状态——当你骑在摩托上，两手握把，身体随弯倾斜，整个世界被压缩成下一个弯、下一脚刹车、下一段路面。没有过去、没有未来，只有此刻。这就是心流。开手动挡上盘山路一样：转速表的每一次跳动都在把你钉在当下，你没法想昨晚的bug，没法想明天的站会。你在开车，仅此而已。</p>
+
+<p>今年开L7自驾去了趟内蒙古。成都出发，两千多公里，NOA开着，座椅按摩开着。以前一个人开长途最多撑4小时，现在一天跑800公里，到了还能吃羊肉。不是吹NOA有多牛——是它帮你吃掉所有机械疲劳，把精力留给你真正需要判断的时刻。</p>
+
+<p>这就是Claude Code的真相：不是让你变懒，是让你变快。AI替你写样板、撸测试、查日志，省掉的不是决策，是体力活。你省下来的精力，刚好够盯住它会不会在并发那里埋雷。</p>
+
+<p>但有一说一，NOA开着的时候我确实不在心流里。座椅按摩加自适应巡航，人是松的。BRZ过弯我不敢走神，走神就是护栏；L7跑高速我敢走神——前面200公里都是直路。两个场景都对，区别在于你知道什么时候需要心流，什么时候可以放手。</p>
+
+<hr />
+
+<p>我投BTC的方式也像开BRZ。</p>
+
+<p>2022年$22k建仓，不看K线，不追土狗，不碰合约。拿到就囤着，像开一辆老油车，不换新款也不羡慕隔壁加速。2024年底$100k附近分批卖出，近5倍。</p>
+
+<p>段永平说”慢就是快”，币圈也一样。长持是对”确定性”的信仰，就像你相信一台水平对置发动机拉到七千转不会散架。</p>
+
+<p>这是古典投资观——像Pirsig修摩托：耐心拆解，等待反馈，信任底层逻辑。</p>
+
+<p>美股还没找到那支愿意握十年的标的。巴菲特说”没人愿意慢慢变富”，我倒不是不愿意，是还在学怎么在慢车道上平稳挂挡。</p>
+
+<hr />
+
+<p>《Tokyo Drift》还在手机里——虽然我从未学会漂移。有些事情不需要完成，只需要存在。车库角落还留着没用过的改装离合、一张富士赛道门票、一个永远不删的改装件购物车。</p>
+
+<p>Pirsig骑老摩托穿越美国，不是反对新技术，是”维修”自己和世界的关系。我周末偶尔关掉AI，纯手动写一段代码，也不是抗拒——是确认自己还能和机器对话，而不是只会下命令。</p>
+
+<p>真正的出路不是选择古典还是浪漫。是像Pirsig说的：保持gumption，保持对品质的敏感。用AI加速原型、生成样板，但核心逻辑自己把关。享受浪漫速度，保留古典深度。</p>
+
+<p>未来属于会用车机的人。但出了bug还能修的人，才配得上那台车机。</p>
+
+<p>BRZ卖了，我不后悔——两个世界我都去过。但无论方向盘怎么变，手还在。</p>
+
+  </article>
+
+</div>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+<script type="text/javascript">
+    /* * * CONFIGURATION VARIABLES * * */
+    var disqus_shortname = 'yoursoulismine';
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function () {
+        var s = document.createElement('script'); s.async = true;
+        s.type = 'text/javascript';
+        s.src = '//' + disqus_shortname + '.disqus.com/count.js';
+        (document.getElementsByTagName('HEAD')[0] || document.getElementsByTagName('BODY')[0]).appendChild(s);
+    }());
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/raphael/2.1.0/raphael-min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+<script src="https://flowchart.js.org/flowchart-latest.js"></script>
+<script src="/js/highlight.min.js"></script>
+<script src="/js/toc.js"></script>
+<script src="/js/qrcode.min.js"></script>
+<script>
+if (!String.prototype.format) {
+    String.prototype.format = function() {
+        var args = arguments;
+        return this.replace(/{(\d+)}/g, function(match, number) { 
+            return typeof args[number] != 'undefined'
+                ? args[number]
+                : match
+            ;
+        });
+    };
+}
+
+$('pre code').each(function(i, block) {
+    hljs.highlightBlock(block);
+});
+
+$('.language-flow').each(function(i, block) {
+    console.log(block);
+    code = $(this).text();
+    diagram = flowchart.parse(code);
+    canvas_id = 'flow'+ i;
+    console.log(canvas_id);
+    temp = "<div id='{0}'> </div>".format(canvas_id);
+    console.log(temp);
+    $(this).html(temp);
+    diagram.drawSVG(canvas_id, {
+        'x': 0,
+        'y': 0,
+        'line-width': 3,
+        'line-length': 50,
+        'text-margin': 10,
+        'font-size': 14,
+    });	
+});
+
+$('#toc').toc({
+    noBackToTopLinks: true,
+    listType: 'ul',
+    title: 'TOC',
+});
+
+var url = location.href;
+console.log(url);
+var qrcode = new QRCode("qrcode", {
+    text: url,
+    width: 128,
+    height: 128,
+    colorDark : "#000000",
+    colorLight : "#ffffff",
+    correctLevel : QRCode.CorrectLevel.H
+});
+
+$(document).ready(function () {
+    $('#show_qrcode').on('mouseenter', function () {
+        $('#qrcode').show();
+        $(this).css({
+            "text-decoration": "underline"
+        });
+    }).on('mouseleave', function () {
+        $('#qrcode').hide();
+        $(this).css({
+            "text-decoration": ''
+        });
+    });;
+});
+</script>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col  footer-col-1">
+        <ul class="contact-list">
+	  <li>
+          <li><a href="mailto:mithrilwoodrat@gmail.com">mithrilwoodrat@gmail.com</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col  footer-col-2">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/Mithrilwoodrat">
+              <span class="icon  icon--github">
+                <svg viewBox="0 0 16 16">
+                  <path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/>
+                </svg>
+              </span>
+              <span class="username">Mithrilwoodrat</span> 
+            </a>
+          </li>
+          
+        </ul>
+      </div>
+  </div>
+</footer>
+
+<script>
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-66599686-1', 'auto');
+  ga('send', 'pageview');
+
+</script>
+</body>
+</html>
